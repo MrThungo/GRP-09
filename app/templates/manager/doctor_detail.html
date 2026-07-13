@@ -1,0 +1,108 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}
+Doctor Details
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-4xl mx-auto">
+
+    <div class="flex justify-between items-center mb-8">
+
+        <div>
+
+            <h1 class="text-4xl font-bold text-white">
+                Doctor Profile
+            </h1>
+
+            <p class="text-slate-400 mt-2">
+                View doctor information
+            </p>
+
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+
+            <a href="{{ url_for('messages.index') }}?with={{ doctor.id }}"
+               class="px-5 py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-lg">
+
+                Message Doctor
+
+            </a>
+
+            <a href="{{ url_for('manager.edit_doctor',
+                                 doctor_id=doctor.id) }}"
+               class="px-5 py-3 bg-amber-600 hover:bg-amber-500 text-white rounded-lg">
+
+                Edit Doctor
+
+            </a>
+
+        </div>
+
+    </div>
+
+    <div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-8">
+
+        <div class="grid md:grid-cols-2 gap-6">
+
+            <div>
+                <p class="text-slate-400 text-sm">First Name</p>
+                <p class="text-white text-lg">{{ doctor.full_name }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400 text-sm">Surname</p>
+                <p class="text-white text-lg">{{ doctor.surname or "-" }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400 text-sm">Gender</p>
+                <p class="text-white text-lg">{{ doctor.gender or "-" }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400 text-sm">Email</p>
+                <p class="text-white text-lg">{{ doctor.email }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400 text-sm">Phone</p>
+                <p class="text-white text-lg">{{ doctor.phone or "-" }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400 text-sm">Employee Number</p>
+                <p class="text-white text-lg">{{ doctor.employee_number or "-" }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400 text-sm">SA ID Number</p>
+                <p class="text-white text-lg">{{ doctor.sa_id_number or "-" }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400 text-sm">Date of Birth</p>
+                <p class="text-white text-lg">{{ doctor.date_of_birth or "-" }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400 text-sm">HPCSA Number</p>
+                <p class="text-white text-lg">{{ doctor.hpcsa_number or "-" }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400 text-sm">Created</p>
+                <p class="text-white text-lg">
+                    {{ doctor.created_at.strftime('%Y-%m-%d') }}
+                </p>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

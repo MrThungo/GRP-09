@@ -1,0 +1,103 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import searchable_multiselect %}
+{% block page_title %}My profile{% endblock %}
+{% block content %}
+<form method="post" enctype="multipart/form-data" class="max-w-xl bg-slate-950 border border-slate-800 rounded-lg p-6 space-y-4">
+  <div class="flex items-center gap-4 pb-2 border-b border-slate-800">
+    {{ render_avatar(current_user, size=64) }}
+    <div class="flex-1">
+      <label class="text-xs text-slate-400">Profile picture (PNG/JPG/GIF/WEBP)</label>
+      <input type="file" name="avatar" accept="image/*"
+             class="w-full mt-1 text-xs text-slate-300 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:bg-slate-800 file:text-slate-200">
+    </div>
+  </div>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div>
+      <label class="text-xs text-slate-400">MRN</label>
+      <div class="mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">{{ patient.mrn }}</div>
+    </div>
+    <div>
+      <label class="text-xs text-slate-400">Email</label>
+      <div class="mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">{{ patient.email or current_user.email }}</div>
+    </div>
+    <div>
+      <label class="text-xs text-slate-400">Title</label>
+      <select name="title" class="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+        <option value="">No title</option>
+        {% for option in title_options %}
+          <option value="{{ option }}" {% if current_user.title == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="text-xs text-slate-400">Phone</label>
+      <input name="phone" value="{{ patient.phone or '' }}"
+             class="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+    </div>
+    <div>
+      <label class="text-xs text-slate-400">ID number</label>
+      <input name="id_number"
+             value="{{ patient.id_number or current_user.sa_id_number or '' }}"
+             inputmode="numeric"
+             maxlength="13"
+             pattern="[0-9]{13}"
+             data-sa-id-source
+             class="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+    </div>
+    <div>
+      <label class="text-xs text-slate-400">Date of birth</label>
+      <input type="date" name="date_of_birth" value="{{ patient.date_of_birth or '' }}"
+             data-sa-dob-target
+             class="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+    </div>
+    <div>
+      <label class="text-xs text-slate-400">Gender</label>
+      <select name="gender" class="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+        <option value="">Not specified</option>
+        {% for option in gender_options %}
+          <option value="{{ option }}" {% if (patient.gender or current_user.gender) == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="text-xs text-slate-400">Blood type</label>
+      <input name="blood_type"
+             list="blood_type_options"
+             value="{{ patient.blood_type or '' }}"
+             autocomplete="off"
+             placeholder="Type or select blood type"
+             class="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+      <datalist id="blood_type_options">
+        {% for blood_type in blood_types %}
+        <option value="{{ blood_type }}"></option>
+        {% endfor %}
+      </datalist>
+    </div>
+  </div>
+  <div>
+    <label class="text-xs text-slate-400">Address</label>
+    <textarea name="address" class="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm h-20">{{ patient.address or '' }}</textarea>
+  </div>
+  <div class="grid md:grid-cols-3 gap-3 pt-3 border-t border-slate-800">
+    {{ searchable_multiselect('conditions', 'condition_ids', 'Chronic conditions', all_conditions, my_condition_ids) }}
+    {{ searchable_multiselect('allergies', 'allergy_ids', 'Allergies', all_allergies, my_allergy_ids) }}
+    {{ searchable_multiselect('medications', 'medication_ids', 'Current medication', all_medications, my_medication_ids) }}
+  </div>
+  <button class="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm font-medium">Save profile</button>
+</form>
+
+<div class="max-w-xl mt-8 bg-rose-950/30 border border-rose-900 rounded-lg p-6">
+  <h2 class="text-rose-200 font-semibold">Danger zone - Deactivate account</h2>
+  <p class="text-xs text-rose-200/80 mt-1">
+    Deactivating your account immediately signs you out and prevents new sign-ins.
+    Only an administrator can reactivate the account.
+  </p>
+  <form method="post" action="{{ url_for('patient.deactivate') }}"
+        class="mt-3 flex flex-col sm:flex-row gap-2 sm:items-center"
+        data-confirm-message="Deactivate your account? You will be signed out immediately.">
+    <input name="confirm" placeholder='Type "deactivate" to confirm' required
+           class="flex-1 px-3 py-2 bg-slate-900 border border-rose-900 rounded text-sm">
+    <button class="px-4 py-2 bg-rose-700 hover:bg-rose-600 rounded text-sm font-medium">Deactivate</button>
+  </form>
+</div>
+{% endblock %}

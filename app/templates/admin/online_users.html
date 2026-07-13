@@ -1,0 +1,139 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Online users{% endblock %}
+{% block content %}
+<div class="mb-4 flex items-center justify-between">
+  <div>
+    <h2 class="text-lg font-semibold">Live users</h2>
+    <p class="text-xs text-slate-400">
+      <span data-online-count>{{ online_count }}</span> online,
+      <span data-offline-count>{{ offline_count }}</span> offline.
+      Online means active in the last <span data-online-window>{{ online_window_minutes }}</span> minutes.
+    </p>
+  </div>
+</div>
+
+<div data-online-grid data-online-page="{{ page }}" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+  {% for u in users %}
+    {% set is_online = u.last_seen and u.last_seen >= online_cutoff %}
+    <div class="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 p-4">
+      <div class="relative">
+        {{ render_avatar(u, size=48) }}
+        <span class="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-950 {% if is_online %}bg-emerald-500{% else %}bg-slate-500{% endif %}"></span>
+      </div>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center justify-between gap-2">
+          <div class="truncate font-medium">{{ u.full_name or '-' }}</div>
+          <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold {% if is_online %}bg-emerald-950 text-emerald-300{% else %}bg-slate-800 text-slate-300{% endif %}">
+            {{ 'Online' if is_online else 'Offline' }}
+          </span>
+        </div>
+        <div class="truncate text-xs text-slate-400">{{ u.email }}</div>
+        <div class="mt-1 text-[10px] text-slate-500">
+          {{ ROLE_LABELS.get(u.primary_role, u.primary_role or '-') }} -
+          {% if is_online %}
+            online now
+          {% elif u.last_seen %}
+            offline - last seen {{ last_seen_age_label(u.last_seen, now) }}
+          {% else %}
+            offline - never seen
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="col-span-full rounded-lg border border-slate-800 bg-slate-950 py-12 text-center text-slate-500">
+      No users found.
+    </div>
+  {% endfor %}
+</div>
+
+{% if pages > 1 %}
+<div class="mt-5 flex justify-center gap-2 text-sm">
+  {% for p in range(1, pages + 1) %}
+    <a href="?page={{ p }}"
+       class="rounded px-3 py-1 {% if p == page %}bg-sky-600 text-white{% else %}bg-slate-800 hover:bg-slate-700{% endif %}">{{ p }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<script>
+  (function () {
+    const grid = document.querySelector("[data-online-grid]");
+    const onlineCountEl = document.querySelector("[data-online-count]");
+    const offlineCountEl = document.querySelector("[data-offline-count]");
+    const windowEl = document.querySelector("[data-online-window]");
+    if (!grid) return;
+
+    const roleLabels = {{ ROLE_LABELS|tojson }};
+    const page = grid.dataset.onlinePage || "1";
+
+    function esc(s) {
+      return String(s || "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+    function minutesText(value) {
+      if (value === null || value === undefined) return "never seen";
+      const minutes = Math.max(1, Number(value) || 0);
+      let amount = minutes;
+      let unit = "minute";
+      if (minutes >= 1440) {
+        amount = Math.floor(minutes / 1440);
+        unit = "day";
+      } else if (minutes >= 60) {
+        amount = Math.floor(minutes / 60);
+        unit = "hour";
+      }
+      return `last seen ${amount} ${unit}${amount === 1 ? "" : "s"} ago`;
+    }
+    function lastSeenText(u) {
+      if (!u.last_seen) return "never seen";
+      return u.last_seen_label ? `last seen ${u.last_seen_label}` : minutesText(u.last_seen_minutes);
+    }
+    function avatar(u) {
+      if (u.avatar_url) {
+        return `<img src="${esc(u.avatar_url)}" class="h-12 w-12 rounded-full object-cover" alt="">`;
+      }
+      const initials = ((u.full_name || u.email || "?").trim()[0] || "?").toUpperCase();
+      return `<div class="grid h-12 w-12 place-items-center rounded-full bg-sky-700 font-semibold text-white">${esc(initials)}</div>`;
+    }
+    function card(u) {
+      const statusText = u.online ? "Online" : "Offline";
+      const statusClasses = u.online ? "bg-emerald-950 text-emerald-300" : "bg-slate-800 text-slate-300";
+      const dotClass = u.online ? "bg-emerald-500" : "bg-slate-500";
+      const detail = u.online ? "online now" : `offline - ${lastSeenText(u)}`;
+      return `
+        <div class="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 p-4">
+          <div class="relative">${avatar(u)}
+            <span class="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-950 ${dotClass}"></span>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-2">
+              <div class="truncate font-medium">${esc(u.full_name || "-")}</div>
+              <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${statusClasses}">${statusText}</span>
+            </div>
+            <div class="truncate text-xs text-slate-400">${esc(u.email)}</div>
+            <div class="mt-1 text-[10px] text-slate-500">${esc(roleLabels[u.role] || u.role || "-")} - ${detail}</div>
+          </div>
+        </div>`;
+    }
+    async function tick() {
+      try {
+        const r = await fetch(`/api/online-users?page=${encodeURIComponent(page)}&per_page=12`, { credentials: "same-origin" });
+        if (!r.ok) return;
+        const data = await r.json();
+        if (onlineCountEl) onlineCountEl.textContent = data.online_count;
+        if (offlineCountEl) offlineCountEl.textContent = data.offline_count;
+        if (windowEl && data.window_minutes) windowEl.textContent = data.window_minutes;
+        if (!data.users.length) {
+          grid.innerHTML = `<div class="col-span-full rounded-lg border border-slate-800 bg-slate-950 py-12 text-center text-slate-500">No users found.</div>`;
+          return;
+        }
+        grid.innerHTML = data.users.map(card).join("");
+      } catch (e) {}
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
+</script>
+{% endblock %}

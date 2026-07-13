@@ -1,0 +1,347 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import stat_card, status_badge %}
+
+{% block page_title %}Technician Dashboard{% endblock %}
+{% block head_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<div class="mb-6">
+  <div class="mb-4">
+    <div class="section-kicker">Workload overview</div>
+    <h1 class="section-title mt-2 text-3xl">Technician Dashboard</h1>
+    <p class="mt-2 text-sm text-slate-400">Track assigned tests, sample receipt, verification queues and priority work.</p>
+  </div>
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-9">
+    <a href="{{ url_for('technician.worklist', filter_type='receipt') }}">{{ stat_card("Sample Receipt", receipt_count, "emerald") }}</a>
+    <a href="{{ url_for('technician.worklist', filter_type='selected') }}">{{ stat_card("Selected Tests", assigned_count, "sky") }}</a>
+    <a href="{{ url_for('technician.worklist', filter_type='waiting') }}">{{ stat_card("Waiting Selection", waiting_count, "sky") }}</a>
+    <a href="{{ url_for('technician.worklist', filter_type='verification') }}">{{ stat_card("Verification Queue", verification_count, "violet") }}</a>
+    <a href="{{ url_for('technician.worklist', filter_type='review') }}">{{ stat_card("Needs Review", review_count, "amber") }}</a>
+    <a href="{{ url_for('technician.worklist', filter_type='urgent') }}">{{ stat_card("Urgent Tests", urgent_count, "amber") }}</a>
+    <a href="{{ url_for('technician.worklist', filter_type='stat') }}">{{ stat_card("STAT Tests", stat_count, "rose") }}</a>
+    <a href="{{ url_for('technician.worklist', filter_type='overdue') }}">{{ stat_card("Overdue Tests", overdue_count, "rose") }}</a>
+    <a href="{{ url_for('technician.worklist', filter_type='nearing') }}">{{ stat_card("Near Limit", nearing_count, "amber") }}</a>
+  </div>
+</div>
+
+<div class="mb-6 grid gap-6 xl:grid-cols-4">
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Queue Mix</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Current workload by stage.</p>
+    <div class="chart-frame">
+      <canvas id="technicianQueueChart" height="190"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Priority Mix</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Routine, urgent and STAT work.</p>
+    <div class="chart-frame">
+      <canvas id="technicianPriorityChart" height="190"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Turnaround Risk</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">On-time, near-limit and overdue tasks.</p>
+    <div class="chart-frame">
+      <canvas id="technicianTurnaroundChart" height="190"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Assigned Test Load</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Open requests by assigned test type.</p>
+    <div class="chart-frame">
+      <canvas id="technicianWorkloadChart" height="190"></canvas>
+    </div>
+  </section>
+</div>
+
+<!--UPDATES FILTER TABLE-->
+
+
+<section class="mb-6">
+  <div class="flex flex-wrap items-end justify-between gap-3 mb-3">
+    <div>
+      <h2 class="text-lg font-semibold">My Assigned Test Types</h2>
+      <p class="text-xs text-slate-400">
+        Test types assigned to you by the laboratory manager.
+      </p>
+    </div>
+    <span class="text-sm text-slate-300">
+      {{ assigned_tests|length }} assigned
+    </span>
+  </div>
+  <div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[720px] text-sm">
+        <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
+          <tr>
+            <th class="px-4 py-3 text-left">Code</th>
+            <th class="text-left">Test Type</th>
+            <th class="text-left">Category</th>
+            <th class="text-left">Sample Type</th>
+            <th class="text-left">Turnaround</th>
+            <th class="text-center">Open Requests</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for test in assigned_tests %}
+          <tr class="border-t border-slate-800">
+            <td class="px-4 py-3 font-mono text-sky-300">{{ test.code }}</td>
+            <td class="font-medium">{{ test.name }}</td>
+            <td>{{ test.category }}</td>
+            <td>{{ test.sample_type or '-' }}</td>
+            <td>{{ test.turnaround_minutes }} min</td>
+            <td class="text-center">
+              <span class="inline-flex min-w-8 justify-center rounded bg-slate-800 px-2 py-1 text-xs">
+                {{ workload_counts.get(test.id, 0) }}
+              </span>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="px-4 py-6 text-slate-500">
+              No test types are assigned to your account. Ask the laboratory manager to assign them.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div class="bg-slate-900 border border-slate-800 rounded-lg p-4 mb-4">
+  <form method="get" class="flex flex-wrap gap-3">
+    <input type="text" name="request" placeholder="Request Number"
+           value="{{ request.args.get('request', '') }}"
+           class="bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm">
+
+    <select name="priority"
+            class="bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm">
+      <option value="">All Priorities</option>
+      <option value="routine" {% if request.args.get('priority') == 'routine' %}selected{% endif %}>Routine</option>
+      <option value="urgent" {% if request.args.get('priority') == 'urgent' %}selected{% endif %}>Urgent</option>
+      <option value="stat" {% if request.args.get('priority') == 'stat' %}selected{% endif %}>STAT</option>
+    </select>
+
+    <select name="queue"
+            class="bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm">
+      <option value="">All Queues</option>
+      <option value="receipt" {% if request.args.get('queue') == 'receipt' %}selected{% endif %}>Sample receipt</option>
+      <option value="selected" {% if request.args.get('queue') == 'selected' %}selected{% endif %}>Selected by me</option>
+      <option value="waiting" {% if request.args.get('queue') == 'waiting' %}selected{% endif %}>Waiting selection</option>
+      <option value="verification" {% if request.args.get('queue') == 'verification' %}selected{% endif %}>Waiting verification</option>
+      <option value="review" {% if request.args.get('queue') == 'review' %}selected{% endif %}>Waiting review</option>
+    </select>
+
+    <select name="category"
+            class="bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm">
+      <option value="">All Categories</option>
+      {% for category in categories %}
+      <option value="{{ category }}" {% if request.args.get('category') == category %}selected{% endif %}>{{ category }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="due"
+            class="bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm">
+      <option value="">Any Due Time</option>
+      <option value="overdue" {% if request.args.get('due') == 'overdue' %}selected{% endif %}>Overdue</option>
+      <option value="nearing" {% if request.args.get('due') == 'nearing' %}selected{% endif %}>Near limit</option>
+      <option value="today" {% if request.args.get('due') == 'today' %}selected{% endif %}>Due today</option>
+    </select>
+
+    <button class="bg-sky-600 hover:bg-sky-700 px-4 py-2 rounded text-white">
+      Filter
+    </button>
+  </form>
+</div>
+
+<!-- Requests Table -->
+<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[980px] text-sm">
+      <thead class="bg-slate-900 text-slate-400 uppercase text-xs">
+        <tr>
+          <th class="px-4 py-3 text-left">Request #</th>
+          <th class="text-left">Patient</th>
+          <th class="text-left">Test</th>
+          <th class="text-left">Category</th>
+          <th class="text-left">Priority</th>
+          <th class="text-left">Queue</th>
+          <th class="text-left">Status</th>
+          <th class="text-left">Turnaround</th>
+          <th class="text-left">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in work_items %}
+        <tr class="border-t border-slate-800 hover:bg-slate-900
+                   {% if item.is_overdue %}bg-red-950/30
+                   {% elif item.is_nearing %}bg-yellow-900/20{% endif %}">
+          <td class="px-4 py-3">{{ item.request.request_number }}</td>
+          <td>{{ item.request.patient.full_name }}</td>
+          <td>
+            <div class="font-medium">{{ item.test.code }}</div>
+            <div class="text-xs text-slate-400">{{ item.test.name }}</div>
+          </td>
+          <td>{{ item.test.category }}</td>
+          <td>
+            {% if item.request.priority == "stat" %}
+            <span class="bg-red-600 text-white px-2 py-1 rounded text-xs">STAT</span>
+            {% elif item.request.priority == "urgent" %}
+            <span class="bg-yellow-500 text-black px-2 py-1 rounded text-xs">URGENT</span>
+            {% else %}
+            <span class="bg-slate-700 text-white px-2 py-1 rounded text-xs">ROUTINE</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.queue == 'receipt' %}
+              Sample receipt
+            {% elif item.queue == 'selected' %}
+              Selected by me
+            {% elif item.queue == 'waiting' %}
+              Waiting selection
+            {% elif item.queue == 'verification' %}
+              Waiting verification
+            {% else %}
+              Waiting review
+            {% endif %}
+            
+          </td>
+          <td><div class="mt-1">{{ status_badge(item.status) }}</div></td>
+          <td>
+            {% if item.is_overdue %}
+            <span class="text-red-400 font-semibold">
+              Overdue since {{ item.due_at.strftime('%d %b %H:%M') }}
+            </span>
+            {% elif item.is_nearing %}
+            <span class="text-yellow-300 font-semibold">
+              Near limit: {{ item.due_at.strftime('%d %b %H:%M') }}
+            </span>
+            {% elif item.status == 'completed' %}
+            <span class="text-slate-300">
+              Completed {{ item.completed_at.strftime('%d %b %H:%M') if item.completed_at else '-' }}
+            </span>
+            {% else %}
+            <span class="text-green-400">
+              Due {{ item.due_at.strftime('%d %b %H:%M') }}
+            </span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.queue == 'verification' %}
+            <a class="text-sky-400 hover:text-sky-300"
+               href="{{ url_for('technician.verify_list') }}#verify-{{ item.id }}">
+              Verify
+            </a>
+            {% else %}
+            <a class="text-sky-400 hover:text-sky-300"
+               href="{{ url_for('technician.capture', request_id=item.request_id) }}">
+              {{ 'Receive samples' if item.queue == 'receipt' else 'Open' }}
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" class="px-4 py-6 text-slate-500">
+            No tests match the selected workload filters.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const C = window.Chart;
+    if (!C) return;
+
+    C.defaults.color = '#cbd5e1';
+    C.defaults.borderColor = 'rgba(148,163,184,0.15)';
+
+    new C(document.getElementById('technicianQueueChart'), {
+      type: 'doughnut',
+      data: {
+        labels: {{ queue_chart_labels|tojson }},
+        datasets: [{
+          data: {{ queue_chart_values|tojson }},
+          backgroundColor: ['#22c55e', '#38bdf8', '#f59e0b', '#a855f7', '#fb7185'],
+          borderWidth: 0,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        cutout: '62%',
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+      }
+    });
+
+    new C(document.getElementById('technicianPriorityChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ priority_chart_labels|tojson }},
+        datasets: [{
+          label: 'Tests',
+          data: {{ priority_chart_values|tojson }},
+          backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
+          borderRadius: 8
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    });
+
+    new C(document.getElementById('technicianTurnaroundChart'), {
+      type: 'doughnut',
+      data: {
+        labels: {{ turnaround_chart_labels|tojson }},
+        datasets: [{
+          data: {{ turnaround_chart_values|tojson }},
+          backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
+          borderWidth: 0,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        cutout: '62%',
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+      }
+    });
+
+    new C(document.getElementById('technicianWorkloadChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ workload_chart_labels|tojson }},
+        datasets: [{
+          label: 'Open requests',
+          data: {{ workload_chart_values|tojson }},
+          backgroundColor: '#38bdf8',
+          borderRadius: 7
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0 } },
+          y: { grid: { display: false } }
+        }
+      }
+    });
+  })();
+</script>
+{% endblock %}

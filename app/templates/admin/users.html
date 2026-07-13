@@ -1,0 +1,285 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Users &amp; roles{% endblock %}
+
+{% block content %}
+
+<div class="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+  <div>
+    <div class="section-kicker">Access control</div>
+    <h1 class="section-title mt-2 text-3xl">Users &amp; roles</h1>
+    <p class="mt-2 text-sm text-slate-400">
+      Search users or actors by name, email, role, ID number, employee number or HPCSA number.
+    </p>
+  </div>
+
+  <form method="get" action="{{ url_for('admin.users') }}" class="flex w-full flex-col gap-2 sm:flex-row lg:max-w-xl">
+    <input type="hidden" name="status" value="{{ status }}">
+    <div class="relative flex-1">
+      <input type="search"
+             name="q"
+             value="{{ q }}"
+             placeholder="Search users or actors"
+             class="w-full px-3 py-2 pr-10 text-sm">
+    </div>
+    <div class="flex gap-2">
+      <button type="submit" class="btn-primary px-4 py-2 text-sm">Search</button>
+      {% if q %}
+        <a href="{{ url_for('admin.users', status=status) }}" class="btn-secondary px-4 py-2 text-sm">Clear</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<!-- Filters -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+
+  <a href="{{ url_for('admin.users', status='all', q=q) }}"
+     class="px-3 py-2 rounded text-xs transition
+     {% if status == 'all' %}
+       bg-sky-600 text-white
+     {% else %}
+       bg-slate-800 hover:bg-slate-700 text-slate-300
+     {% endif %}">
+    All Users
+  </a>
+
+  <a href="{{ url_for('admin.users', status='active', q=q) }}"
+     class="px-3 py-2 rounded text-xs transition
+     {% if status == 'active' %}
+       bg-emerald-600 text-white
+     {% else %}
+       bg-slate-800 hover:bg-slate-700 text-slate-300
+     {% endif %}">
+    Active
+  </a>
+
+  <a href="{{ url_for('admin.users', status='blocked', q=q) }}"
+     class="px-3 py-2 rounded text-xs transition
+     {% if status == 'blocked' %}
+       bg-rose-600 text-white
+     {% else %}
+       bg-slate-800 hover:bg-slate-700 text-slate-300
+     {% endif %}">
+    Blocked
+  </a>
+
+  <span class="ml-auto text-xs text-slate-500">
+    {{ users|length }} result{% if users|length != 1 %}s{% endif %}
+  </span>
+
+</div>
+
+<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+
+  <table class="w-full text-sm" data-page-size="10">
+
+    <thead class="text-left text-slate-400 text-xs uppercase">
+      <tr>
+        <th class="px-4 py-2">User</th>
+        <th>Email</th>
+        <th>Current role</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th class="text-right pr-4">Manage</th>
+      </tr>
+    </thead>
+
+    <tbody>
+
+      {% for u in users %}
+
+      <tr class="border-t border-slate-800
+                 {% if u.is_pending %}bg-amber-950/20{% endif %}
+                 {% if u.is_blocked %}bg-rose-950/20{% endif %}
+                 {% if u.is_deactivated %}bg-slate-800/40{% endif %}">
+
+        <!-- User -->
+        <td class="px-4 py-3">
+
+          <a href="{{ url_for('admin.user_detail', user_id=u.id) }}"
+             class="flex items-center gap-3 hover:text-sky-300">
+
+            {{ render_avatar(u, size=36) }}
+
+            <div>
+              <div class="font-medium">
+                {{ u.full_name or '-' }}
+              </div>
+
+              <div class="text-[10px] text-slate-500">
+                {{ u.id[:8] }}
+              </div>
+            </div>
+
+          </a>
+
+        </td>
+
+        <!-- Email -->
+        <td class="text-slate-300">
+
+          {{ u.email }}
+
+          {% if u.temp_password and u.must_change_password %}
+            <!--
+            <div class="text-[10px] text-amber-300 font-mono">
+              temp: {{ u.temp_password }}
+            </div>
+            -->
+          {% endif %}
+
+        </td>
+
+        <!-- Role -->
+        <td>
+
+          {% if u.is_pending %}
+
+            <span class="text-amber-300 text-xs">
+              awaiting role
+            </span>
+
+          {% else %}
+
+            {{ ROLE_LABELS.get(u.primary_role, u.primary_role) }}
+
+          {% endif %}
+
+        </td>
+
+        <!-- Status -->
+        <td>
+
+          {% if u.is_deactivated %}
+
+            <span class="px-2 py-0.5 rounded bg-slate-700 text-slate-200 text-[11px]">
+              deactivated
+            </span>
+
+          {% elif u.is_blocked %}
+
+            <span class="px-2 py-0.5 rounded bg-rose-800 text-rose-100 text-[11px]">
+              blocked
+            </span>
+
+          {% else %}
+
+            <span class="px-2 py-0.5 rounded bg-emerald-800 text-emerald-100 text-[11px]">
+              active
+            </span>
+
+          {% endif %}
+
+        </td>
+
+        <!-- Created -->
+        <td class="text-slate-400 text-xs">
+          {{ u.created_at.strftime('%Y-%m-%d') }}
+        </td>
+
+        <!-- Actions -->
+        <td class="pr-4">
+
+          <div class="flex flex-wrap gap-2 justify-end">
+
+            <!-- Role -->
+            <form method="post"
+                  action="{{ url_for('admin.set_role', user_id=u.id) }}"
+                  class="flex gap-1 items-center">
+
+              <select name="role"
+                      class="px-2 py-1 bg-slate-900 border border-slate-800 rounded text-xs">
+
+                {% for r in ROLES %}
+
+                  <option value="{{ r }}"
+                          {% if u.primary_role == r %}selected{% endif %}>
+
+                    {{ ROLE_LABELS[r] }}
+
+                  </option>
+
+                {% endfor %}
+
+              </select>
+
+              <button class="px-2 py-1 bg-sky-600 hover:bg-sky-500 rounded text-xs">
+                Save
+              </button>
+
+            </form>
+
+            <!-- Activate -->
+            {% if u.is_deactivated %}
+
+            <form method="post"
+                  action="{{ url_for('admin.activate', user_id=u.id) }}">
+
+              <button class="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs">
+                Activate
+              </button>
+
+            </form>
+
+            {% endif %}
+
+            <!-- Block / Unblock -->
+            {% if u.is_blocked %}
+
+            <form method="post"
+                  action="{{ url_for('admin.unblock', user_id=u.id) }}">
+
+              <button class="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs">
+                Unblock
+              </button>
+
+            </form>
+
+            {% else %}
+
+            <form method="post"
+                  action="{{ url_for('admin.block', user_id=u.id) }}">
+
+              <button class="px-2 py-1 bg-rose-700 hover:bg-rose-600 rounded text-xs">
+                Block
+              </button>
+
+            </form>
+
+            {% endif %}
+
+            <!-- View -->
+            <a href="{{ url_for('admin.user_detail', user_id=u.id) }}"
+               class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs">
+
+              View
+
+            </a>
+
+          </div>
+
+        </td>
+
+      </tr>
+
+      {% else %}
+
+      <tr>
+        <td colspan="6" class="px-4 py-10 text-center text-sm text-slate-500">
+          No users found for the selected filter.
+        </td>
+      </tr>
+
+      {% endfor %}
+
+    </tbody>
+
+  </table>
+
+</div>
+
+<p class="text-xs text-slate-500 mt-3">
+  Click a user's avatar to see full details.
+</p>
+
+{% endblock %}

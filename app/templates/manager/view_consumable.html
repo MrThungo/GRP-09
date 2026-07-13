@@ -1,0 +1,110 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}
+Consumable Details
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-4xl mx-auto">
+
+    <div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-8">
+
+        <div class="flex justify-between items-center mb-6">
+
+            <h1 class="text-3xl font-bold text-white">
+                {{ consumable.name }}
+            </h1>
+
+            <a href="{{ url_for('manager.edit_consumable',
+                                consumable_id=consumable.id) }}"
+               class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg">
+
+                Edit
+
+            </a>
+
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-6">
+
+            <div>
+                <p class="text-slate-400">SKU</p>
+                <p class="text-white">{{ consumable.sku }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400">Category</p>
+                <p class="text-white">{{ consumable.category }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400">Unit</p>
+                <p class="text-white">{{ consumable.unit }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400">Current Stock</p>
+
+                {% if consumable.current_stock <= consumable.reorder_level %}
+                    <p class="text-red-400 font-semibold">
+                        {{ consumable.current_stock }}
+                    </p>
+                {% else %}
+                    <p class="text-green-400 font-semibold">
+                        {{ consumable.current_stock }}
+                    </p>
+                {% endif %}
+            </div>
+
+            <div>
+                <p class="text-slate-400">Reorder Level</p>
+                <p class="text-white">{{ consumable.reorder_level }}</p>
+            </div>
+
+            <div>
+                <p class="text-slate-400">Supplier</p>
+                <p class="text-white">{{ consumable.supplier.name if consumable.supplier else '-' }}</p>
+            </div>
+
+        </div>
+
+        <form method="post"
+              action="{{ url_for('manager.adjust_consumable', consumable_id=consumable.id) }}"
+              class="mt-8 grid md:grid-cols-3 gap-3 border-t border-slate-800 pt-6">
+            <select name="operation" required
+                    class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
+                <option value="increase">Increase by</option>
+                <option value="decrease">Decrease by</option>
+                <option value="set">Set to</option>
+            </select>
+            <input type="number" name="quantity" min="0" required placeholder="Quantity"
+                   class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
+            <button class="bg-cyan-600 hover:bg-cyan-500 rounded-lg px-4 py-3 font-medium">
+                Adjust Stock
+            </button>
+        </form>
+
+        <div class="mt-8">
+
+            <form method="POST"
+                  action="{{ url_for('manager.delete_consumable',
+                                     consumable_id=consumable.id) }}"
+                  data-confirm-message="Delete this consumable?">
+
+                <button type="submit"
+                        class="px-5 py-3 bg-red-600 hover:bg-red-500 text-white rounded-lg">
+
+                    Delete Consumable
+
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

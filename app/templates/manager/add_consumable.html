@@ -1,0 +1,118 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}
+Add Consumable
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-3xl mx-auto">
+
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-white">
+            Add Consumable
+        </h1>
+    </div>
+
+    <form method="POST"
+          class="bg-[#0B1120] border border-slate-800 rounded-2xl p-8 space-y-6">
+
+        <div>
+            <label class="block text-slate-300 mb-2">
+                SKU
+            </label>
+
+            <input type="text"
+                   name="sku"
+                   required
+                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
+        </div>
+
+        <div>
+            <label class="block text-slate-300 mb-2">
+                Name
+            </label>
+
+            <input type="text"
+                   name="name"
+                   required
+                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
+        </div>
+
+        <div>
+            <label class="block text-slate-300 mb-2">
+                Category
+            </label>
+
+            <input type="text"
+                   name="category"
+                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
+        </div>
+
+        <div>
+            <label class="block text-slate-300 mb-2">
+                Unit
+            </label>
+
+            <input type="text"
+                   name="unit"
+                   placeholder="box, tube, bottle"
+                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
+        </div>
+
+        <div>
+            <label class="block text-slate-300 mb-2">Supplier</label>
+            <select name="supplier_id" required
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
+                <option value="">Select supplier</option>
+                {% for supplier in suppliers %}
+                <option value="{{ supplier.id }}">{{ supplier.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+
+            <div>
+                <label class="block text-slate-300 mb-2">
+                    Current Stock
+                </label>
+
+                <input type="number"
+                       name="current_stock"
+                       value="0"
+                       class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
+            </div>
+
+            <div>
+                <label class="block text-slate-300 mb-2">
+                    Reorder Level
+                </label>
+
+                <input type="number"
+                       name="reorder_level"
+                       value="0"
+                       class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
+            </div>
+
+        </div>
+
+        <div class="flex gap-3">
+
+            <button type="submit"
+                    class="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg">
+                Save
+            </button>
+
+            <a href="{{ url_for('manager.inventory') }}"
+               class="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg">
+                Cancel
+            </a>
+
+        </div>
+
+    </form>
+
+</div>
+
+{% endblock %}

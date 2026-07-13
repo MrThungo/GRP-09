@@ -1,0 +1,26 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block page_title %}All requests{% endblock %}
+{% block content %}
+<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="text-left text-slate-400 text-xs uppercase">
+      <tr><th class="px-4 py-2">Number</th><th>Patient</th><th>Doctor</th><th>Priority</th><th>Status</th><th>Created</th></tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="border-t border-slate-800">
+        <td class="px-4 py-2 font-mono text-xs">{{ r.request_number }}</td>
+        <td>{{ r.patient.full_name if r.patient else '-' }}</td>
+        <td class="text-slate-400">{{ r.doctor.full_name if r.doctor else 'self-booking' }}</td>
+        <td class="text-slate-400 text-xs">{{ r.priority }}</td>
+        <td>{{ status_badge(r.status) }}</td>
+        <td class="text-slate-500 text-xs">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="px-4 py-6 text-slate-500">No requests.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

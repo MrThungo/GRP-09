@@ -1,0 +1,141 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import status_badge %}
+
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-wrap items-start justify-between gap-3">
+  <div>
+    <div class="section-kicker">Lab technician</div>
+    <h1 class="section-title mt-2 text-3xl">{{ title }}</h1>
+    <p class="mt-2 text-sm text-slate-400">Open sample receipt, selected tests, pending captures and verification work.</p>
+  </div>
+  <a href="{{ url_for('technician.dashboard') }}"
+     class="rounded bg-slate-800 px-4 py-2 text-sm text-white hover:bg-slate-700">
+    Back to Dashboard
+  </a>
+</div>
+
+<div class="mb-4 flex flex-wrap gap-2">
+  {% for option in filter_options %}
+  <a href="{{ url_for('technician.worklist', filter_type=option.key) }}"
+     class="rounded-full border px-3 py-1.5 text-xs font-medium
+            {% if filter_type == option.key %}
+              border-sky-500 bg-sky-500/15 text-sky-200
+            {% else %}
+              border-slate-800 bg-slate-950 text-slate-300 hover:bg-slate-900
+            {% endif %}">
+    {{ option.label }}
+  </a>
+  {% endfor %}
+</div>
+
+<div class="overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[980px] text-sm">
+      <thead class="bg-slate-900 text-xs uppercase text-slate-400">
+        <tr>
+          <th class="px-4 py-3 text-left">Request #</th>
+          <th class="text-left">Patient</th>
+          <th class="text-left">Test</th>
+          <th class="text-left">Sample</th>
+          <th class="text-left">Priority</th>
+          <th class="text-left">Queue</th>
+          <th class="text-left">Status</th>
+          <th class="text-left">Turnaround</th>
+          <th class="text-left">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in work_items %}
+        <tr class="border-t border-slate-800 hover:bg-slate-900
+                   {% if item.is_overdue %}bg-red-950/30
+                   {% elif item.is_nearing %}bg-yellow-900/20{% endif %}">
+          <td class="px-4 py-3 font-mono text-slate-200">{{ item.request.request_number }}</td>
+          <td>
+            <div class="font-medium">{{ item.request.patient.full_name }}</div>
+            <div class="text-xs text-slate-500">MRN {{ item.request.patient.mrn }}</div>
+          </td>
+          <td>
+            <div class="font-medium">{{ item.test.code }}</div>
+            <div class="text-xs text-slate-400">{{ item.test.name }}</div>
+            <div class="text-xs text-slate-500">{{ item.test.category }}</div>
+          </td>
+          <td>
+            <div>{{ item.test.sample_type or '-' }}</div>
+            {% if item.request.samples %}
+            <div class="mt-1 text-xs text-slate-500">
+              {% for sample in item.request.samples %}
+                {{ sample.sample_type }}: {{ sample.status.replace('_', ' ') }}{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.request.priority == "stat" %}
+            <span class="rounded bg-red-600 px-2 py-1 text-xs text-white">STAT</span>
+            {% elif item.request.priority == "urgent" %}
+            <span class="rounded bg-yellow-500 px-2 py-1 text-xs text-black">URGENT</span>
+            {% else %}
+            <span class="rounded bg-slate-700 px-2 py-1 text-xs text-white">ROUTINE</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.queue == 'receipt' %}
+              Sample receipt
+            {% elif item.queue == 'selected' %}
+              Selected by me
+            {% elif item.queue == 'waiting' %}
+              Waiting selection
+            {% elif item.queue == 'verification' %}
+              Waiting verification
+            {% else %}
+              Waiting review
+            {% endif %}
+          </td>
+          <td>{{ status_badge(item.status) }}</td>
+          <td>
+            {% if item.is_overdue %}
+            <span class="font-semibold text-red-400">Overdue since {{ item.due_at.strftime('%d %b %H:%M') }}</span>
+            {% elif item.is_nearing %}
+            <span class="font-semibold text-yellow-300">Near limit: {{ item.due_at.strftime('%d %b %H:%M') }}</span>
+            {% elif item.status == 'completed' %}
+            <span class="text-slate-300">Completed {{ item.completed_at.strftime('%d %b %H:%M') if item.completed_at else '-' }}</span>
+            {% else %}
+            <span class="text-green-400">Due {{ item.due_at.strftime('%d %b %H:%M') }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if item.queue == 'verification' %}
+            <a class="text-sky-400 hover:text-sky-300"
+               href="{{ url_for('technician.verify_list') }}#verify-{{ item.id }}">
+              Verify
+            </a>
+            {% else %}
+            <a class="text-sky-400 hover:text-sky-300"
+               href="{{ url_for('technician.capture', request_id=item.request_id) }}">
+              {% if item.queue == 'receipt' %}
+                Receive samples
+              {% elif item.queue == 'waiting' %}
+                Select test
+              {% elif item.queue == 'review' %}
+                Review result
+              {% else %}
+                Open
+              {% endif %}
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" class="px-4 py-8 text-center text-slate-500">
+            No technician work matches this page.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

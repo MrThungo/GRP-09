@@ -1,0 +1,117 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}
+Suppliers
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-7xl mx-auto">
+
+    <div class="flex justify-between items-center mb-8">
+
+        <div>
+            <h1 class="text-4xl font-bold text-white">
+                Suppliers
+            </h1>
+
+            <p class="text-slate-400 mt-2">
+                Manage consumable suppliers
+            </p>
+        </div>
+
+        <a href="{{ url_for('manager.add_supplier') }}"
+           class="px-5 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg">
+
+            + Add Supplier
+
+        </a>
+
+    </div>
+
+    <div class="bg-[#0B1120] border border-slate-800 rounded-2xl overflow-hidden">
+
+        <table class="w-full text-sm">
+
+            <thead class="bg-[#111827] text-slate-400 uppercase text-xs">
+
+                <tr>
+                    <th class="px-6 py-4 text-left">Name</th>
+                    <th class="px-6 py-4 text-left">Contact</th>
+                    <th class="px-6 py-4 text-left">Email</th>
+                    <th class="px-6 py-4 text-left">Phone</th>
+                    <th class="px-6 py-4 text-center">Actions</th>
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+                {% for supplier in rows %}
+
+                <tr class="border-t border-slate-800">
+
+                    <td class="px-6 py-4">
+                        {{ supplier.name }}
+                    </td>
+
+                    <td class="px-6 py-4">
+                        {{ supplier.contact_name }}
+                    </td>
+
+                    <td class="px-6 py-4">
+                        {{ supplier.email }}
+                    </td>
+
+                    <td class="px-6 py-4">
+                        {{ supplier.phone }}
+                    </td>
+
+                    <td class="px-6 py-4">
+
+                        <div class="flex gap-2 justify-center">
+
+                            <a href="{{ url_for('manager.supplier_detail', supplier_id=supplier.id) }}"
+                               class="px-3 py-2 bg-cyan-600 rounded text-white">
+
+                                View
+
+                            </a>
+
+                            <a href="{{ url_for('manager.edit_supplier', supplier_id=supplier.id) }}"
+                               class="px-3 py-2 bg-amber-600 rounded text-white">
+
+                                Edit
+
+                            </a>
+
+                            <form method="POST"
+                                  action="{{ url_for('manager.delete_supplier', supplier_id=supplier.id) }}"
+                                  data-confirm-message="Delete supplier?">
+
+                                <button
+                                    class="px-3 py-2 bg-red-600 rounded text-white">
+
+                                    Delete
+
+                                </button>
+
+                            </form>
+
+                        </div>
+
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+{% endblock %}

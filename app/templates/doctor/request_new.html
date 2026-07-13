@@ -1,0 +1,501 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}New request{% endblock %}
+
+{% block content %}
+<form method="post" class="mx-auto max-w-6xl space-y-6" data-request-form>
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]">
+    <div class="space-y-6">
+      <section class="surface-card patient-search-card p-5">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 class="text-base font-bold text-white">Patient</h2>
+            <p class="text-xs text-slate-400">Search by ID number, name, MRN, email or phone.</p>
+          </div>
+          <span class="text-[11px] font-bold uppercase tracking-[0.14em] text-sky-300">Required</span>
+        </div>
+
+        <div class="relative mt-4">
+          <label for="patient_search" class="text-xs font-semibold text-slate-400">Patient search</label>
+          <input
+            type="search"
+            id="patient_search"
+            placeholder="Start typing a patient ID number..."
+            autocomplete="off"
+            class="mt-1 w-full px-3 py-2 text-sm"
+            aria-controls="patient_results"
+            aria-expanded="false">
+
+          <input type="hidden" name="patient_id" id="patient_id" required>
+
+          <div
+            id="patient_results"
+            class="patient-search-results mt-2 hidden overflow-y-auto rounded-lg border border-slate-800 bg-slate-950 shadow-2xl"
+            role="listbox">
+          </div>
+        </div>
+
+        <div
+          id="selected_patient"
+          class="mt-3 hidden rounded-lg border border-sky-800 bg-sky-950/40 px-3 py-2 text-sm text-sky-100"
+          aria-live="polite">
+        </div>
+      </section>
+
+      <section class="surface-card p-5">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 class="text-base font-bold text-white">Tests</h2>
+            <p class="text-xs text-slate-400">Choose the requested laboratory tests.</p>
+          </div>
+          <div class="w-full sm:w-72">
+            <label for="test_filter" class="text-xs font-semibold text-slate-400">Filter tests</label>
+            <input
+              type="search"
+              id="test_filter"
+              placeholder="Search code, name or sample..."
+              autocomplete="off"
+              class="mt-1 w-full px-3 py-2 text-sm">
+          </div>
+        </div>
+
+        <div class="mt-4 space-y-4" id="test_list">
+          {% for category, category_tests in tests|groupby("category") %}
+          <section
+            class="test-category overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60"
+            data-test-category>
+            <div class="flex flex-col gap-1 border-b border-slate-800 bg-slate-900/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <h3 class="text-sm font-extrabold text-white">{{ category or "Uncategorized" }}</h3>
+              <span class="text-xs font-semibold text-slate-400">{{ category_tests|length }} test{{ '' if category_tests|length == 1 else 's' }}</span>
+            </div>
+
+            <div class="grid gap-3 p-3 md:grid-cols-2">
+              {% for t in category_tests %}
+              <label
+                class="test-option block cursor-pointer rounded-lg border border-slate-800 bg-slate-950/80 p-4 transition hover:border-sky-700 hover:bg-slate-900"
+                data-search="{{ ((category or '') ~ ' ' ~ t.code ~ ' ' ~ t.name ~ ' ' ~ (t.sample_type or ''))|lower }}">
+                <div class="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    name="test_ids"
+                    value="{{ t.id }}"
+                    data-sample-type="{{ t.sample_type or '' }}"
+                    class="mt-1 h-5 w-5 rounded border-slate-700 bg-slate-900 text-sky-600">
+                  <span class="min-w-0">
+                    <span class="block text-sm font-bold text-white">{{ t.code }}</span>
+                    <span class="mt-1 block text-sm text-slate-300">{{ t.name }}</span>
+                    <span class="mt-2 block text-xs text-slate-500">
+                      Sample required: {{ t.sample_type or "Not specified" }}
+                    </span>
+                  </span>
+                </div>
+              </label>
+              {% endfor %}
+            </div>
+          </section>
+          {% else %}
+          <div class="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
+            No active tests are available.
+          </div>
+          {% endfor %}
+
+          <div id="test_filter_empty" hidden class="rounded-lg border border-dashed border-slate-800 bg-slate-950/60 px-3 py-4 text-sm text-slate-400">
+            No tests match your filter.
+          </div>
+        </div>
+      </section>
+
+      <section class="surface-card p-5">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-base font-bold text-white">Samples</h2>
+            <p class="text-xs text-slate-400">Samples update automatically from the selected tests.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-300">
+              <input
+                type="checkbox"
+                id="auto_barcode_toggle"
+                name="auto_barcode"
+                value="true"
+                checked
+                class="rounded border-slate-700 bg-slate-900 text-sky-600">
+              Auto-generate
+            </label>
+            <button type="button" id="generate_barcodes_btn" class="btn-secondary px-3 py-2 text-xs">
+              New barcodes
+            </button>
+          </div>
+        </div>
+
+        <div id="sample-container" class="mt-4 space-y-3"></div>
+      </section>
+
+      <section class="surface-card p-5">
+        <label for="clinical_notes" class="text-xs font-semibold text-slate-400">Clinical notes</label>
+        <textarea
+          id="clinical_notes"
+          name="clinical_notes"
+          rows="4"
+          class="mt-1 w-full px-3 py-2 text-sm"
+          placeholder="Add relevant clinical context for the laboratory team."></textarea>
+      </section>
+    </div>
+
+    <aside class="space-y-4 lg:sticky lg:top-24 lg:self-start">
+      <section class="surface-card p-5">
+        <h2 class="text-base font-bold text-white">Request summary</h2>
+        <div class="mt-4 space-y-3 text-sm">
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-slate-400">Patient</span>
+            <span id="summary_patient" class="max-w-[12rem] truncate font-semibold text-slate-200">Not selected</span>
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-slate-400">Tests</span>
+            <span id="summary_tests" class="font-semibold text-slate-200">0 selected</span>
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-slate-400">Samples</span>
+            <span id="summary_samples" class="font-semibold text-slate-200">0 prepared</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="surface-card p-5">
+        <label for="priority" class="text-xs font-semibold text-slate-400">Priority</label>
+        <select id="priority" name="priority" class="mt-1 w-full px-3 py-2 text-sm">
+          {% for p in priorities %}
+          <option value="{{ p }}" {% if p == 'routine' %}selected{% endif %}>{{ p|title }}</option>
+          {% endfor %}
+        </select>
+
+        <button type="submit" class="btn-primary mt-5 w-full px-4 py-2 text-sm">
+          Create request
+        </button>
+      </section>
+    </aside>
+  </div>
+</form>
+
+<script>
+(() => {
+  const form = document.querySelector("[data-request-form]");
+  if (!form) return;
+
+  const patientSearchUrl = "{{ url_for('doctor.patient_search') }}";
+  const patientSearch = form.querySelector("#patient_search");
+  const patientId = form.querySelector("#patient_id");
+  const patientResults = form.querySelector("#patient_results");
+  const selectedPatient = form.querySelector("#selected_patient");
+  const testFilter = form.querySelector("#test_filter");
+  const testList = form.querySelector("#test_list");
+  const testFilterEmpty = form.querySelector("#test_filter_empty");
+  const sampleContainer = form.querySelector("#sample-container");
+  const autoBarcodeToggle = form.querySelector("#auto_barcode_toggle");
+  const generateBarcodesButton = form.querySelector("#generate_barcodes_btn");
+  const summaryPatient = form.querySelector("#summary_patient");
+  const summaryTests = form.querySelector("#summary_tests");
+  const summarySamples = form.querySelector("#summary_samples");
+  const commonSampleTypes = [
+    "Whole Blood",
+    "EDTA Blood",
+    "Citrated Plasma",
+    "Serum",
+    "Plasma",
+    "Urine",
+    "Bone Marrow Aspirate"
+  ];
+
+  let searchTimer;
+  let searchRequest;
+  let selectedPatientName = "";
+
+  function patientLabel(patient) {
+    const idNumber = patient.id_number || "No ID number";
+    return `${patient.full_name} (${idNumber})`;
+  }
+
+  function hidePatientResults() {
+    patientResults.classList.add("hidden");
+    patientSearch.setAttribute("aria-expanded", "false");
+  }
+
+  function renderPatientRows(patients) {
+    patientResults.replaceChildren();
+
+    if (!patients.length) {
+      const empty = document.createElement("div");
+      empty.className = "px-3 py-3 text-sm text-slate-400";
+      empty.textContent = "No matching patients found.";
+      patientResults.appendChild(empty);
+      patientResults.classList.remove("hidden");
+      patientSearch.setAttribute("aria-expanded", "true");
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    patients.forEach(patient => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "block w-full border-b border-slate-800 px-3 py-3 text-left text-sm last:border-b-0 hover:bg-slate-900";
+      button.setAttribute("role", "option");
+      button.dataset.patientId = patient.id;
+      button.dataset.patientName = patient.full_name;
+      button.dataset.patientIdNumber = patient.id_number || "";
+
+      const name = document.createElement("div");
+      name.className = "font-semibold text-white";
+      name.textContent = patientLabel(patient);
+
+      const meta = document.createElement("div");
+      meta.className = "mt-1 text-xs text-slate-500";
+      meta.textContent = `MRN ${patient.mrn || "-"}${patient.phone ? ` | ${patient.phone}` : ""}`;
+
+      button.append(name, meta);
+      fragment.appendChild(button);
+    });
+
+    patientResults.appendChild(fragment);
+    patientResults.classList.remove("hidden");
+    patientSearch.setAttribute("aria-expanded", "true");
+  }
+
+  function searchPatients() {
+    const q = patientSearch.value.trim();
+    patientId.value = "";
+    selectedPatientName = "";
+    selectedPatient.classList.add("hidden");
+    summaryPatient.textContent = "Not selected";
+
+    if (q.length < 2 && q.replace(/\D/g, "").length < 2) {
+      hidePatientResults();
+      return;
+    }
+
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(async () => {
+      if (searchRequest) searchRequest.abort();
+      searchRequest = new AbortController();
+
+      try {
+        const url = `${patientSearchUrl}?q=${encodeURIComponent(q)}`;
+        const response = await fetch(url, {
+          credentials: "same-origin",
+          signal: searchRequest.signal,
+          headers: { "Accept": "application/json" }
+        });
+        if (!response.ok) throw new Error("Patient lookup failed.");
+        const data = await response.json();
+        renderPatientRows(data.patients || []);
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          renderPatientRows([]);
+        }
+      }
+    }, 180);
+  }
+
+  function selectPatient(button) {
+    patientId.value = button.dataset.patientId;
+    selectedPatientName = button.dataset.patientName || "";
+    patientSearch.value = button.dataset.patientIdNumber || selectedPatientName;
+    selectedPatient.textContent = `Selected: ${button.textContent.trim()}`;
+    selectedPatient.classList.remove("hidden");
+    summaryPatient.textContent = selectedPatientName || "Selected";
+    hidePatientResults();
+  }
+
+  function selectedTests() {
+    return Array.from(form.querySelectorAll('input[name="test_ids"]:checked'));
+  }
+
+  function allSampleTypeOptions(selectedType) {
+    const fromTests = Array.from(form.querySelectorAll('input[name="test_ids"]'))
+      .map(input => input.dataset.sampleType || "")
+      .filter(Boolean);
+    return Array.from(new Set([...commonSampleTypes, ...fromTests, selectedType].filter(Boolean)));
+  }
+
+  function randomCode(length) {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = new Uint8Array(length);
+    if (window.crypto && window.crypto.getRandomValues) {
+      window.crypto.getRandomValues(bytes);
+    } else {
+      for (let i = 0; i < length; i += 1) bytes[i] = Math.floor(Math.random() * 255);
+    }
+    return Array.from(bytes, value => alphabet[value % alphabet.length]).join("");
+  }
+
+  function barcodeFor(sampleType, index) {
+    const codes = {
+      "Whole Blood": "WB",
+      "EDTA Blood": "EDTA",
+      "Citrated Plasma": "CP",
+      "Serum": "SER",
+      "Plasma": "PLAS",
+      "Urine": "URI",
+      "Bone Marrow Aspirate": "BMA"
+    };
+    const typeCode = codes[sampleType] || "GEN";
+    const dateCode = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    return `${typeCode}-${dateCode}-${String(index + 1).padStart(2, "0")}-${randomCode(4)}`;
+  }
+
+  function createSampleRow(sampleType, index) {
+    const autoBarcode = autoBarcodeToggle.checked;
+    const row = document.createElement("div");
+    row.className = "sample-row rounded-lg border border-slate-800 bg-slate-950/80 p-3";
+
+    const header = document.createElement("div");
+    header.className = "mb-2 flex items-center justify-between gap-3 text-xs text-slate-500";
+    const label = document.createElement("span");
+    label.className = "font-bold uppercase tracking-[0.12em]";
+    label.textContent = `Sample ${index + 1}`;
+    header.appendChild(label);
+
+    const grid = document.createElement("div");
+    grid.className = "grid gap-3 sm:grid-cols-2";
+
+    const barcodeWrap = document.createElement("label");
+    barcodeWrap.className = "block text-xs font-semibold text-slate-400";
+    barcodeWrap.textContent = "Barcode";
+
+    const barcodeInput = document.createElement("input");
+    barcodeInput.type = "text";
+    barcodeInput.name = "barcode";
+    barcodeInput.required = true;
+    barcodeInput.placeholder = "Barcode";
+    barcodeInput.value = autoBarcode ? barcodeFor(sampleType, index) : "";
+    barcodeInput.readOnly = autoBarcode;
+    barcodeInput.className = `mt-1 w-full px-3 py-2 text-sm ${autoBarcode ? "cursor-not-allowed bg-slate-900 text-slate-400" : ""}`;
+    barcodeWrap.appendChild(barcodeInput);
+
+    const typeWrap = document.createElement("label");
+    typeWrap.className = "block text-xs font-semibold text-slate-400";
+    typeWrap.textContent = "Sample type";
+
+    const typeSelect = document.createElement("select");
+    typeSelect.name = "sample_type";
+    typeSelect.required = true;
+    typeSelect.className = "mt-1 w-full px-3 py-2 text-sm";
+
+    const blankOption = document.createElement("option");
+    blankOption.value = "";
+    blankOption.textContent = "Select sample type";
+    typeSelect.appendChild(blankOption);
+
+    allSampleTypeOptions(sampleType).forEach(optionValue => {
+      const option = document.createElement("option");
+      option.value = optionValue;
+      option.textContent = optionValue;
+      if (optionValue === sampleType) option.selected = true;
+      typeSelect.appendChild(option);
+    });
+
+    typeSelect.addEventListener("change", () => {
+      if (autoBarcodeToggle.checked) barcodeInput.value = barcodeFor(typeSelect.value, index);
+    });
+
+    typeWrap.appendChild(typeSelect);
+    grid.append(barcodeWrap, typeWrap);
+    row.append(header, grid);
+    return row;
+  }
+
+  function sampleTypesFromSelection() {
+    const types = selectedTests()
+      .map(input => (input.dataset.sampleType || "").trim())
+      .filter(Boolean);
+    return Array.from(new Set(types));
+  }
+
+  function updateSamples(regenerate = true) {
+    const types = sampleTypesFromSelection();
+    sampleContainer.replaceChildren();
+
+    if (!selectedTests().length) {
+      const empty = document.createElement("div");
+      empty.className = "rounded-lg border border-dashed border-slate-800 bg-slate-950/60 px-3 py-4 text-sm text-slate-400";
+      empty.textContent = "Select tests to prepare the required samples.";
+      sampleContainer.appendChild(empty);
+      updateSummary();
+      return;
+    }
+
+    const rows = types.length ? types : [""];
+    const fragment = document.createDocumentFragment();
+    rows.forEach((sampleType, index) => {
+      fragment.appendChild(createSampleRow(regenerate ? sampleType : "", index));
+    });
+    sampleContainer.appendChild(fragment);
+    updateSummary();
+  }
+
+  function refreshBarcodes() {
+    const autoEnabled = autoBarcodeToggle.checked;
+    generateBarcodesButton.disabled = !autoEnabled;
+    generateBarcodesButton.classList.toggle("opacity-50", !autoEnabled);
+    generateBarcodesButton.classList.toggle("cursor-not-allowed", !autoEnabled);
+
+    form.querySelectorAll(".sample-row").forEach((row, index) => {
+      const barcode = row.querySelector('input[name="barcode"]');
+      const sampleType = row.querySelector('select[name="sample_type"]');
+      if (!barcode) return;
+      barcode.readOnly = autoEnabled;
+      barcode.classList.toggle("cursor-not-allowed", autoEnabled);
+      barcode.classList.toggle("bg-slate-900", autoEnabled);
+      barcode.classList.toggle("text-slate-400", autoEnabled);
+      if (autoEnabled) {
+        barcode.value = barcodeFor(sampleType ? sampleType.value : "", index);
+      }
+    });
+  }
+
+  function updateSummary() {
+    const testCount = selectedTests().length;
+    const sampleCount = sampleContainer.querySelectorAll(".sample-row").length;
+    summaryPatient.textContent = selectedPatientName || (patientId.value ? "Selected" : "Not selected");
+    summaryTests.textContent = `${testCount} selected`;
+    summarySamples.textContent = `${sampleCount} prepared`;
+  }
+
+  patientSearch.addEventListener("input", searchPatients);
+  patientResults.addEventListener("click", event => {
+    const button = event.target.closest("button[data-patient-id]");
+    if (button) selectPatient(button);
+  });
+  document.addEventListener("click", event => {
+    if (!form.contains(event.target) || (!patientResults.contains(event.target) && event.target !== patientSearch)) {
+      hidePatientResults();
+    }
+  });
+
+  testFilter.addEventListener("input", () => {
+    const q = testFilter.value.trim().toLowerCase();
+    let visibleCount = 0;
+
+    testList.querySelectorAll(".test-option").forEach(option => {
+      option.hidden = q && !option.dataset.search.includes(q);
+      if (!option.hidden) visibleCount += 1;
+    });
+
+    testList.querySelectorAll("[data-test-category]").forEach(category => {
+      const hasVisibleTests = Array.from(category.querySelectorAll(".test-option"))
+        .some(option => !option.hidden);
+      category.hidden = q && !hasVisibleTests;
+    });
+
+    if (testFilterEmpty) testFilterEmpty.hidden = !q || visibleCount > 0;
+  });
+
+  form.addEventListener("change", event => {
+    if (event.target.matches('input[name="test_ids"]')) updateSamples(true);
+    if (event.target === autoBarcodeToggle) refreshBarcodes();
+    updateSummary();
+  });
+
+  generateBarcodesButton.addEventListener("click", refreshBarcodes);
+  updateSamples(false);
+})();
+</script>
+{% endblock %}

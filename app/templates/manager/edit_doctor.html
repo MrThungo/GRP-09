@@ -1,0 +1,107 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}
+Edit Doctor
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-4xl mx-auto">
+
+    <h1 class="text-4xl font-bold text-white mb-8">
+        Edit Doctor
+    </h1>
+
+    <div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-8">
+
+        <form method="POST" class="grid md:grid-cols-2 gap-6">
+
+            <input
+                type="text"
+                name="full_name"
+                value="{{ doctor.full_name }}"
+                required
+                class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+            >
+
+            <input
+                type="text"
+                name="surname"
+                value="{{ doctor.surname }}"
+                class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+            >
+
+            <select
+                name="gender"
+                class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+            >
+                <option value="">Not specified</option>
+                {% for option in gender_options %}
+                    <option value="{{ option }}" {% if doctor.gender == option %}selected{% endif %}>{{ option }}</option>
+                {% endfor %}
+            </select>
+
+            <input
+                type="email"
+                name="email"
+                value="{{ doctor.email }}"
+                required
+                class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+            >
+
+            <input
+                type="text"
+                name="phone"
+                value="{{ doctor.phone }}"
+                class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+            >
+
+            <input
+                type="text"
+                name="employee_number"
+                value="{{ doctor.employee_number }}"
+                class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+            >
+
+            <input
+                type="text"
+                name="sa_id_number"
+                value="{{ doctor.sa_id_number }}"
+                data-sa-id-source
+                class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+            >
+
+            <input
+                type="date"
+                name="date_of_birth"
+                value="{{ doctor.date_of_birth or '' }}"
+                data-sa-dob-target
+                class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+            >
+
+            <input
+                type="text"
+                name="hpcsa_number"
+                value="{{ doctor.hpcsa_number }}"
+                class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+            >
+
+            <div class="md:col-span-2">
+
+                <button
+                    type="submit"
+                    class="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-semibold">
+
+                    Save Changes
+
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

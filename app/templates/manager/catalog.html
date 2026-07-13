@@ -1,0 +1,169 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}
+Test Catalog
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-7xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+
+        <div>
+            <h1 class="text-4xl font-bold text-white">
+                Test Catalog
+            </h1>
+
+            <p class="text-slate-400 mt-2">
+                Manage laboratory tests and configurations.
+            </p>
+        </div>
+
+        <a href="{{ url_for('manager.add_test') }}"
+           class="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-semibold">
+
+            + Add Test
+
+        </a>
+
+    </div>
+
+    <!-- Catalog Table -->
+    <div class="bg-[#0B1120] border border-slate-800 rounded-2xl overflow-hidden">
+
+        <table class="w-full">
+
+            <thead class="bg-slate-800 text-slate-400 text-xs uppercase">
+
+                <tr>
+
+                    <th class="px-4 py-3 text-left">
+                        Code
+                    </th>
+
+                    <th class="px-4 py-3 text-left">
+                        Test Name
+                    </th>
+
+                    <th class="px-4 py-3 text-left">
+                        Category
+                    </th>
+
+                    <th class="px-4 py-3 text-left">
+                        Sample Type
+                    </th>
+
+                    <th class="px-4 py-3 text-left">
+                        Technician
+                    </th>
+
+                    <th class="px-4 py-3 text-center">
+                        Turnaround
+                    </th>
+
+                    <th class="px-4 py-3 text-center">
+                        Actions
+                    </th>
+
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+                {% for test in tests %}
+
+                <tr class="border-t border-slate-800 hover:bg-slate-900">
+
+                    <td class="px-4 py-3 text-cyan-400 font-medium">
+                        {{ test.code }}
+                    </td>
+
+                    <td class="px-4 py-3 text-white">
+                        {{ test.name }}
+                    </td>
+
+                    <td class="px-4 py-3 text-slate-300">
+                        {{ test.category }}
+                    </td>
+
+                    <td class="px-4 py-3 text-slate-300">
+                        {{ test.sample_type or "-" }}
+                    </td>
+
+                    <td class="px-4 py-3 text-slate-300">
+                        {% if test.assigned_technicians %}
+                          {{ test.assigned_technicians|map(attribute='technician.full_name')|join(', ') }}
+                        {% else %}
+                          -
+                        {% endif %}
+                    </td>
+
+                    <td class="px-4 py-3 text-center text-slate-300">
+                        {{ test.turnaround_hours or 0 }} min
+                    </td>
+
+                    <td class="px-4 py-3">
+
+                        <div class="flex justify-center gap-2">
+
+                            <a href="{{ url_for('manager.view_test', test_id=test.id) }}"
+                               class="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded">
+
+                                View
+
+                            </a>
+
+                            <a href="{{ url_for('manager.edit_test', test_id=test.id) }}"
+                               class="px-3 py-1 bg-cyan-700 hover:bg-cyan-600 text-white rounded">
+
+                                Edit
+
+                            </a>
+
+                            <form method="POST"
+                                  action="{{ url_for('manager.delete_test', test_id=test.id) }}"
+                                  data-confirm-message="Delete this test?">
+
+                                <button
+                                    type="submit"
+                                    class="px-3 py-1 bg-red-700 hover:bg-red-600 text-white rounded">
+
+                                    Delete
+
+                                </button>
+
+                            </form>
+
+                        </div>
+
+                    </td>
+
+                </tr>
+
+                {% else %}
+
+                <tr>
+
+                    <td colspan="7"
+                        class="text-center py-8 text-slate-500">
+
+                        No tests found.
+
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+{% endblock %}

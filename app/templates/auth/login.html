@@ -1,0 +1,65 @@
+{% extends "layouts/base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block public %}
+<div class="auth-shell grid min-h-screen place-items-center px-4 py-10">
+  <section class="auth-card w-full max-w-md p-6 sm:p-8">
+    <a href="{{ url_for('public.landing') }}" class="text-xs font-medium text-slate-400 hover:text-slate-200">Back to home</a>
+
+    <div class="mt-6">
+      <h1 class="text-2xl font-bold tracking-tight text-white">Sign in</h1>
+      <p class="mt-1 text-sm text-slate-400">Enter your account details to continue.</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="flash-message mt-4
+                    {% if cat == 'error' %}bg-red-950/60 text-red-100 border border-red-800/80
+                    {% else %}bg-emerald-950/60 text-emerald-100 border border-emerald-800/80{% endif %}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <div class="mt-6 rounded-lg border border-slate-800 bg-slate-950 p-4">
+      <div class="mb-3">
+        <div class="text-sm font-semibold text-white">Quick sign in</div>
+        <div class="text-xs text-slate-500">Use a seeded role account.</div>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        {% for demo in [
+          ('Patient', 'patient@nmbhlab.com', 'Patient@123', ''),
+          ('Doctor', 'doctor@nmbhlab.com', 'Doctor@123', ''),
+          ('Lab Technician', 'tech@nmbhlab.com', 'Tech@123', ''),
+          ('Lab Manager', 'manager@nmbhlab.com', 'Manager@123', ''),
+          ('Admin', 'admin@nmbhlab.com', 'Admin@123', 'col-span-2')
+        ] %}
+          <form method="post" class="{{ demo[3] }}">
+            <input type="hidden" name="email" value="{{ demo[1] }}">
+            <input type="hidden" name="password" value="{{ demo[2] }}">
+            <button type="submit" class="btn-secondary w-full px-3 py-2 text-xs">{{ demo[0] }}</button>
+          </form>
+        {% endfor %}
+      </div>
+    </div>
+
+    <form method="post" class="mt-6 space-y-4">
+      <div>
+        <label for="email" class="text-xs font-semibold uppercase tracking-wide text-slate-400">Email</label>
+        <input id="email" name="email" type="email" required autocomplete="email"
+               class="mt-1 w-full px-3 py-2.5 text-sm">
+      </div>
+      <div>
+        <label for="password" class="text-xs font-semibold uppercase tracking-wide text-slate-400">Password</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password"
+               class="mt-1 w-full px-3 py-2.5 text-sm">
+      </div>
+      <button type="submit" class="btn-primary w-full px-4 py-2.5 text-sm">Sign in</button>
+    </form>
+
+    <div class="mt-5 text-center text-xs text-slate-400">
+      <a class="font-medium text-sky-300 hover:text-sky-200" href="{{ url_for('auth.forgot_password') }}">Forgot password?</a>
+      <span class="mx-2 text-slate-700">/</span>
+      No account?
+      <a class="font-medium text-sky-300 hover:text-sky-200" href="{{ url_for('auth.signup') }}">Sign up</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

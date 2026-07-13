@@ -1,0 +1,33 @@
+{% extends "layouts/base.html" %}
+{% block title %}Awaiting access{% endblock %}
+{% block public %}
+<div class="min-h-screen grid place-items-center px-4">
+  <div class="w-full max-w-md bg-slate-950 border border-slate-800 rounded-xl p-8 text-center">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="mb-4 px-4 py-2 rounded text-sm text-left
+                    {% if cat == 'error' %}bg-red-900/40 text-red-200 border border-red-800
+                    {% elif cat == 'success' %}bg-emerald-900/40 text-emerald-200 border border-emerald-800
+                    {% else %}bg-slate-800 text-slate-200{% endif %}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    <div class="mx-auto w-14 h-14 rounded-full bg-amber-500/15 grid place-items-center text-amber-400">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-7 h-7">
+        <circle cx="12" cy="12" r="9"/><path d="M12 7v6l3 2"/>
+      </svg>
+    </div>
+    <h1 class="mt-4 text-xl font-semibold">Almost there, {{ current_user.full_name or current_user.email }}.</h1>
+    <p class="mt-2 text-sm text-slate-400">
+      Your registration is in. An administrator has been notified and will grant you a role
+      (Doctor, Lab Technician, Lab Manager, Admin or Patient). You'll get a notification
+      the moment access is enabled.
+    </p>
+    <div class="mt-6 flex items-center justify-center gap-2">
+      <a href="{{ url_for('public.landing') }}"
+         class="px-4 py-2 rounded bg-white/10 hover:bg-white/20 text-sm">Back to home</a>
+      <a href="{{ url_for('auth.logout') }}"
+         class="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-sm">Sign out</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

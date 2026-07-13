@@ -1,0 +1,91 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}Messages{% endblock %}
+
+{% block content %}
+<div data-chat-root
+     data-initial-user="{% if selected_contact %}{{ selected_contact.id }}{% endif %}"
+     class="grid min-h-[72vh] overflow-hidden rounded-lg border border-slate-800 bg-slate-950 lg:grid-cols-[21rem_1fr]">
+  <aside class="border-b border-slate-800 bg-slate-950 lg:border-b-0 lg:border-r">
+    <div class="border-b border-slate-800 px-4 py-4">
+      <h1 class="text-lg font-bold text-white">Messages</h1>
+      <p class="mt-1 text-xs text-slate-400">Live clinical conversations for your role.</p>
+    </div>
+
+    <div data-chat-contacts class="max-h-[72vh] overflow-y-auto p-2">
+      {% for contact in contacts %}
+        {% set active = selected_contact and selected_contact.id == contact.id %}
+        <a href="{{ url_for('messages.index') }}?with={{ contact.id }}"
+           data-chat-contact
+           data-user-id="{{ contact.id }}"
+           class="mb-1 flex items-center gap-3 rounded-lg border px-3 py-3 text-left {% if active %}border-sky-700 bg-slate-900{% else %}border-transparent hover:bg-slate-900{% endif %}">
+          {{ render_avatar(contact.user, size=36) }}
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-semibold text-slate-100">{{ contact.name }}</span>
+            <span class="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
+              <span data-chat-presence-dot="{{ contact.id }}"
+                    class="h-2 w-2 rounded-full {% if contact.online %}bg-emerald-400{% else %}bg-slate-600{% endif %}"></span>
+              <span data-chat-presence="{{ contact.id }}">{{ contact.presence_label }}</span>
+            </span>
+          </span>
+          <span data-chat-unread="{{ contact.id }}"
+                class="{% if not contact.unread_count %}hidden {% endif %}rounded-full bg-sky-600 px-2 py-0.5 text-[11px] font-bold text-white">
+            {{ contact.unread_count }}
+          </span>
+        </a>
+      {% else %}
+        <div class="px-4 py-10 text-center text-sm text-slate-500">
+          No message contacts yet.
+        </div>
+      {% endfor %}
+    </div>
+  </aside>
+
+  <section class="flex min-h-[72vh] flex-col bg-slate-950">
+    <div data-chat-empty class="{% if selected_contact %}hidden {% endif %}grid flex-1 place-items-center px-6 text-center">
+      <div>
+        <div class="text-lg font-bold text-white">Select a conversation</div>
+        <div class="mt-2 max-w-md text-sm text-slate-400">
+          Doctors can message patients they have requested tests for. Doctors, lab managers and technicians can message each other.
+        </div>
+      </div>
+    </div>
+
+    <div data-chat-window class="{% if not selected_contact %}hidden {% endif %}flex min-h-[72vh] flex-1 flex-col">
+      <div class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-4">
+        <div class="min-w-0">
+          <div data-chat-header-name class="truncate text-base font-bold text-white">
+            {% if selected_contact %}{{ selected_contact.name }}{% endif %}
+          </div>
+          <div class="mt-1 flex items-center gap-2 text-xs text-slate-400">
+            <span data-chat-header-presence-dot
+                  class="h-2 w-2 rounded-full {% if selected_contact and selected_contact.online %}bg-emerald-400{% else %}bg-slate-600{% endif %}"></span>
+            <span data-chat-header-presence>
+              {% if selected_contact %}{{ selected_contact.presence_label }}{% endif %}
+            </span>
+          </div>
+        </div>
+        <div data-chat-status class="hidden text-xs text-slate-500 sm:block"></div>
+      </div>
+
+      <div data-chat-thread class="flex-1 space-y-3 overflow-y-auto px-4 py-5">
+        <div class="py-10 text-center text-sm text-slate-500">Loading conversation...</div>
+      </div>
+
+      <form data-chat-form class="border-t border-slate-800 bg-slate-950 p-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label class="sr-only" for="chat-message">Message</label>
+          <textarea id="chat-message"
+                    data-chat-input
+                    maxlength="1000"
+                    rows="2"
+                    class="min-h-12 flex-1 resize-none rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+                    placeholder="Type a message"></textarea>
+          <button type="submit" class="btn-primary min-h-12 px-5 text-sm">Send</button>
+        </div>
+        <div class="mt-2 text-[11px] text-slate-500">Press Enter to send, Shift+Enter for a new line.</div>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,93 @@
+{% macro stat_card(label, value, tone='sky') %}
+{% set tone_classes = {
+  'sky': 'text-sky-300',
+  'emerald': 'text-emerald-300',
+  'amber': 'text-amber-300',
+  'rose': 'text-rose-300',
+  'violet': 'text-violet-300',
+}.get(tone, 'text-sky-300') %}
+<div class="stat-card">
+  <div class="relative z-10">
+    <div class="stat-label">{{ label }}</div>
+    <div class="stat-value {{ tone_classes }}">{{ value }}</div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro status_badge(status) %}
+{% set s = status or 'unknown' %}
+{% set color = {
+  'submitted': 'bg-slate-800/80 text-slate-200',
+  'collected': 'bg-slate-800/80 text-slate-200',
+  'received': 'bg-emerald-950/70 text-emerald-200',
+  'rejected': 'bg-rose-950/70 text-rose-200',
+  'samples_received': 'bg-amber-950/70 text-amber-200',
+  'in_progress': 'bg-sky-950/70 text-sky-200',
+  'completed': 'bg-indigo-950/70 text-indigo-200',
+  'verified': 'bg-emerald-950/70 text-emerald-200',
+  'to_be_reviewed': 'bg-amber-950/70 text-amber-200',
+  'released': 'bg-emerald-900/80 text-emerald-100',
+  'cancelled': 'bg-rose-950/70 text-rose-200',
+}.get(s, 'bg-slate-800/80 text-slate-200') %}
+<span class="status-badge {{ color }}">{{ s.replace('_', ' ') }}</span>
+{% endmacro %}
+
+{% macro alert_badge(type, message) %}
+  {% if type == 'critical' %}
+    <div class="mb-4 rounded-xl border border-red-800/70 bg-red-950/50 p-4">
+      <div class="flex items-start gap-3">
+        <div class="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-red-500/15 text-xs font-bold text-red-300">!</div>
+        <p class="text-sm text-red-100">{{ message }}</p>
+      </div>
+    </div>
+  {% elif type == 'warning' %}
+    <div class="mb-4 rounded-xl border border-amber-800/70 bg-amber-950/50 p-4">
+      <div class="flex items-start gap-3">
+        <div class="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-amber-500/15 text-xs font-bold text-amber-300">!</div>
+        <p class="text-sm text-amber-100">{{ message }}</p>
+      </div>
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% macro searchable_multiselect(field_id, name, label, items, selected_ids=[]) %}
+<div data-searchable-multi>
+  <label class="text-xs text-slate-400" for="{{ field_id }}_search">{{ label }}</label>
+  <details class="mt-1 rounded-lg border border-slate-800 bg-slate-900">
+    <summary data-searchable-multi-summary
+             data-placeholder="Select {{ label|lower }}"
+             class="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm text-slate-200">
+      <span data-searchable-multi-text class="truncate">Select {{ label|lower }}</span>
+      <span class="text-slate-500">v</span>
+    </summary>
+    <div class="border-t border-slate-800 p-2">
+      <input id="{{ field_id }}_search" type="search" autocomplete="off"
+             data-searchable-multi-search
+             placeholder="Type to filter..."
+             class="mb-2 w-full px-3 py-2 text-xs">
+      <div class="max-h-48 space-y-1 overflow-auto pr-1">
+        {% for item in items %}
+          {% set label_text = item.category ~ ' - ' ~ item.name %}
+          <label data-searchable-multi-option
+                 data-label="{{ label_text }}"
+                 data-search="{{ label_text|lower }}"
+                 class="flex cursor-pointer items-start gap-2 rounded px-2 py-1.5 text-xs text-slate-200 hover:bg-slate-800">
+            <input type="checkbox"
+                   name="{{ name }}"
+                   value="{{ item.id }}"
+                   {% if item.id in selected_ids %}checked{% endif %}
+                   class="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-950 text-sky-500 focus:ring-sky-500">
+            <span>
+              <span class="block font-medium">{{ item.name }}</span>
+              <span class="block text-[10px] text-slate-500">{{ item.category }}</span>
+            </span>
+          </label>
+        {% else %}
+          <div class="px-2 py-4 text-center text-xs text-slate-500">No options available.</div>
+        {% endfor %}
+        <div data-searchable-multi-empty class="hidden px-2 py-4 text-center text-xs text-slate-500">No matches.</div>
+      </div>
+    </div>
+  </details>
+</div>
+{% endmacro %}

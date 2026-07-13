@@ -1,0 +1,174 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import stat_card %}
+{% block page_title %}Reports{% endblock %}
+{% block head_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block content %}
+<form method="get" class="flex flex-wrap items-end gap-3 mb-5 bg-slate-950 border border-slate-800 rounded-lg p-4">
+  <div>
+    <label class="block text-xs text-slate-400 mb-1">From</label>
+    <input type="date" name="from" value="{{ frm }}" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm">
+  </div>
+  <div>
+    <label class="block text-xs text-slate-400 mb-1">To</label>
+    <input type="date" name="to" value="{{ to }}" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm">
+  </div>
+  <button class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 rounded text-sm">Filter</button>
+  <a href="{{ url_for('manager.reports', **{'from': frm, 'to': to, 'format': 'pdf'}) }}"
+     class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm">Download PDF</a>
+</form>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  {{ stat_card("Tests performed", total) }}
+  {{ stat_card("Released", released) }}
+  {{ stat_card("Categories worked", by_category|length) }}
+  {{ stat_card("Low stock items", low_stock|length) }}
+</div>
+
+<div class="mb-6 grid gap-4 xl:grid-cols-3">
+  <section class="surface-card p-5 xl:col-span-2">
+    <div class="mb-4">
+      <h2 class="text-lg font-bold text-white">Tests by Category</h2>
+      <p class="text-sm text-slate-400">Completed and verified tests in the selected range.</p>
+    </div>
+    <div class="chart-frame">
+      <canvas id="managerReportCategoryChart" height="110"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <div class="mb-4">
+      <h2 class="text-lg font-bold text-white">Release Progress</h2>
+      <p class="text-sm text-slate-400">Requests released versus still open in the selected range.</p>
+    </div>
+    <div class="chart-frame">
+      <canvas id="managerReleaseChart" height="180"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5 xl:col-span-3">
+    <div class="mb-4">
+      <h2 class="text-lg font-bold text-white">Stock Risk Comparison</h2>
+      <p class="text-sm text-slate-400">Lowest stock items against reorder thresholds.</p>
+    </div>
+    <div class="chart-frame">
+      <canvas id="managerReportStockChart" height="100"></canvas>
+    </div>
+  </section>
+</div>
+
+<div class="grid md:grid-cols-2 gap-4">
+  <div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-800 font-medium">Tests performed by category</div>
+    <table class="w-full text-sm">
+      <thead class="text-left text-slate-400 text-xs uppercase">
+        <tr><th class="px-4 py-2">Category</th><th>Tests</th></tr>
+      </thead>
+      <tbody>
+        {% for cat, n in by_category %}
+          <tr class="border-t border-slate-800"><td class="px-4 py-2">{{ cat or '-' }}</td><td>{{ n }}</td></tr>
+        {% else %}
+          <tr><td colspan="2" class="px-4 py-6 text-slate-500">No data in range.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-800 font-medium">Low / reorder-level stock</div>
+    <table class="w-full text-sm">
+      <thead class="text-left text-slate-400 text-xs uppercase">
+        <tr><th class="px-4 py-2">SKU</th><th>Item</th><th>On hand</th><th>Reorder</th></tr>
+      </thead>
+      <tbody>
+        {% for c in low_stock %}
+          <tr class="border-t border-slate-800">
+            <td class="px-4 py-2 font-mono text-xs">{{ c.sku }}</td>
+            <td>{{ c.name }}</td>
+            <td class="text-rose-300">{{ c.current_stock }}</td>
+            <td>{{ c.reorder_level }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4" class="px-4 py-6 text-slate-500">All consumables above reorder level.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+  (function () {
+    const C = window.Chart;
+    if (!C) return;
+
+    C.defaults.color = '#cbd5e1';
+    C.defaults.borderColor = 'rgba(148,163,184,0.15)';
+
+    new C(document.getElementById('managerReportCategoryChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ category_chart_labels|tojson }},
+        datasets: [{
+          label: 'Tests',
+          data: {{ category_chart_values|tojson }},
+          backgroundColor: '#38bdf8',
+          borderRadius: 8
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0 } },
+          y: { grid: { display: false } }
+        }
+      }
+    });
+
+    new C(document.getElementById('managerReleaseChart'), {
+      type: 'doughnut',
+      data: {
+        labels: {{ release_chart_labels|tojson }},
+        datasets: [{
+          data: {{ release_chart_values|tojson }},
+          backgroundColor: ['#22c55e', '#f59e0b'],
+          borderWidth: 0,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        cutout: '64%',
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+      }
+    });
+
+    new C(document.getElementById('managerReportStockChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ stock_chart_labels|tojson }},
+        datasets: [
+          {
+            label: 'On hand',
+            data: {{ stock_chart_current|tojson }},
+            backgroundColor: '#f43f5e',
+            borderRadius: 6
+          },
+          {
+            label: 'Reorder level',
+            data: {{ stock_chart_reorder|tojson }},
+            backgroundColor: 'rgba(56,189,248,0.65)',
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0 } },
+          y: { grid: { display: false } }
+        }
+      }
+    });
+  })();
+</script>
+{% endblock %}

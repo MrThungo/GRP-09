@@ -1,0 +1,53 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Reference Data{% endblock %}
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+  <form method="post" class="bg-slate-950 border border-slate-800 rounded-lg p-5 grid md:grid-cols-[12rem_1fr_1fr_auto] gap-3">
+    <select name="kind" required class="bg-slate-900 border border-slate-700 rounded px-3 py-2">
+      <option value="category">Test category</option>
+      <option value="sample_type">Sample type</option>
+    </select>
+    <input name="name" required placeholder="Name"
+           class="bg-slate-900 border border-slate-700 rounded px-3 py-2">
+    <input name="description" placeholder="Description"
+           class="bg-slate-900 border border-slate-700 rounded px-3 py-2">
+    <button class="bg-cyan-600 hover:bg-cyan-500 rounded px-4 py-2">Add</button>
+  </form>
+
+  <div class="grid md:grid-cols-2 gap-6">
+    <section class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+      <div class="px-4 py-3 bg-slate-900 font-medium">Test Categories</div>
+      {% for row in categories %}
+      <div class="px-4 py-3 border-t border-slate-800 flex items-center justify-between gap-3">
+        <div>
+          <div>{{ row.name }}</div>
+          <div class="text-xs text-slate-500">{{ row.description or '' }}</div>
+        </div>
+        <form method="post" action="{{ url_for('manager.reference_toggle', kind='category', row_id=row.id) }}">
+          <button class="px-3 py-1.5 rounded text-xs {% if row.active %}bg-emerald-800{% else %}bg-slate-700{% endif %}">
+            {{ 'Active' if row.active else 'Inactive' }}
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </section>
+
+    <section class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+      <div class="px-4 py-3 bg-slate-900 font-medium">Sample Types</div>
+      {% for row in sample_types %}
+      <div class="px-4 py-3 border-t border-slate-800 flex items-center justify-between gap-3">
+        <div>
+          <div>{{ row.name }}</div>
+          <div class="text-xs text-slate-500">{{ row.description or '' }}</div>
+        </div>
+        <form method="post" action="{{ url_for('manager.reference_toggle', kind='sample_type', row_id=row.id) }}">
+          <button class="px-3 py-1.5 rounded text-xs {% if row.active %}bg-emerald-800{% else %}bg-slate-700{% endif %}">
+            {{ 'Active' if row.active else 'Inactive' }}
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </section>
+  </div>
+</div>
+{% endblock %}

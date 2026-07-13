@@ -1,0 +1,198 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import stat_card %}
+{% block page_title %}Reports{% endblock %}
+{% block head_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block content %}
+<form method="get" class="flex flex-wrap items-end gap-3 mb-5 bg-slate-950 border border-slate-800 rounded-lg p-4">
+  <div><label class="block text-xs text-slate-400 mb-1">From</label>
+    <input type="date" name="from" value="{{ frm }}" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm"></div>
+  <div><label class="block text-xs text-slate-400 mb-1">To</label>
+    <input type="date" name="to" value="{{ to }}" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm"></div>
+  <button class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 rounded text-sm">Filter</button>
+  <a href="{{ url_for('technician.reports', **{'from': frm, 'to': to, 'format': 'pdf'}) }}"
+     class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm">Download PDF</a>
+</form>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  {{ stat_card("Tests captured", captured) }}
+  {{ stat_card("Tests verified", verified) }}
+  {{ stat_card("Abnormal flagged", abnormal) }}
+  {{ stat_card("Categories worked", by_cat|length) }}
+</div>
+
+<div class="grid gap-4 mb-6 xl:grid-cols-4">
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Captured vs Verified</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Your completed work and verification contribution.</p>
+    <div class="chart-frame">
+      <canvas id="technicianMixChart" height="180"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Result Flags</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Normal, low and high result split.</p>
+    <div class="chart-frame">
+      <canvas id="technicianFlagChart" height="180"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5 xl:col-span-2">
+    <h2 class="text-lg font-bold text-white">Daily Captures</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Captured tests across the selected range.</p>
+    <div class="chart-frame">
+      <canvas id="technicianTrendChart" height="95"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5 xl:col-span-2">
+    <h2 class="text-lg font-bold text-white">Categories Worked</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Volume by laboratory category.</p>
+    <div class="chart-frame">
+      <canvas id="technicianCategoryChart" height="110"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5 xl:col-span-2">
+    <h2 class="text-lg font-bold text-white">Top Tests</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Most frequent tests captured in this range.</p>
+    <div class="chart-frame">
+      <canvas id="technicianTopTestsChart" height="110"></canvas>
+    </div>
+  </section>
+</div>
+
+<div class="grid md:grid-cols-2 gap-4">
+  <div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-800 font-medium">By category</div>
+    <table class="w-full text-sm">
+      <thead class="text-left text-slate-400 text-xs uppercase"><tr><th class="px-4 py-2">Category</th><th>Tests</th></tr></thead>
+      <tbody>
+      {% for c, n in by_cat %}<tr class="border-t border-slate-800"><td class="px-4 py-2">{{ c or '-' }}</td><td>{{ n }}</td></tr>
+      {% else %}<tr><td colspan="2" class="px-4 py-6 text-slate-500">No data.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-800 font-medium">Per-test breakdown</div>
+    <table class="w-full text-sm">
+      <thead class="text-left text-slate-400 text-xs uppercase"><tr><th class="px-4 py-2">Code</th><th>Test</th><th>Count</th></tr></thead>
+      <tbody>
+      {% for code, name, n in detail_rows %}
+        <tr class="border-t border-slate-800"><td class="px-4 py-2 font-mono text-xs">{{ code }}</td><td>{{ name }}</td><td>{{ n }}</td></tr>
+      {% else %}<tr><td colspan="3" class="px-4 py-6 text-slate-500">No data.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+  (function () {
+    const C = window.Chart;
+    if (!C) return;
+
+    C.defaults.color = '#cbd5e1';
+    C.defaults.borderColor = 'rgba(148,163,184,0.15)';
+
+    new C(document.getElementById('technicianMixChart'), {
+      type: 'doughnut',
+      data: {
+        labels: {{ mix_chart_labels|tojson }},
+        datasets: [{
+          data: {{ mix_chart_values|tojson }},
+          backgroundColor: ['#38bdf8', '#22c55e'],
+          borderWidth: 0,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        cutout: '62%',
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+      }
+    });
+
+    new C(document.getElementById('technicianFlagChart'), {
+      type: 'doughnut',
+      data: {
+        labels: {{ flag_chart_labels|tojson }},
+        datasets: [{
+          data: {{ flag_chart_values|tojson }},
+          backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
+          borderWidth: 0,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        cutout: '62%',
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+      }
+    });
+
+    new C(document.getElementById('technicianTrendChart'), {
+      type: 'line',
+      data: {
+        labels: {{ trend_chart_labels|tojson }},
+        datasets: [{
+          label: 'Captured',
+          data: {{ trend_chart_values|tojson }},
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56,189,248,0.18)',
+          fill: true,
+          tension: 0.35,
+          pointBackgroundColor: '#bae6fd',
+          pointRadius: 3
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    });
+
+    new C(document.getElementById('technicianCategoryChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ category_chart_labels|tojson }},
+        datasets: [{
+          label: 'Tests',
+          data: {{ category_chart_values|tojson }},
+          backgroundColor: '#38bdf8',
+          borderRadius: 7
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0 } },
+          y: { grid: { display: false } }
+        }
+      }
+    });
+
+    new C(document.getElementById('technicianTopTestsChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ top_test_chart_labels|tojson }},
+        datasets: [{
+          label: 'Tests',
+          data: {{ top_test_chart_values|tojson }},
+          backgroundColor: '#a855f7',
+          borderRadius: 7
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0 } },
+          y: { grid: { display: false } }
+        }
+      }
+    });
+  })();
+</script>
+{% endblock %}

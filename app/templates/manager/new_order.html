@@ -1,0 +1,108 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+
+<div class="max-w-3xl mx-auto">
+
+    <div class="mb-8">
+
+        <h1 class="text-3xl font-bold text-white">
+            Create New Order
+        </h1>
+
+        <p class="text-slate-400 mt-2">
+            Place a consumable order with a supplier
+        </p>
+
+    </div>
+
+    <div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-8">
+
+        <form method="POST"
+              action="{{ url_for('manager.create_order') }}"
+              class="space-y-6">
+
+            <!-- Consumable -->
+            <div>
+
+                <label class="block text-sm text-slate-300 mb-2">
+                    Consumable
+                </label>
+
+                <select name="consumable_id"
+                        required
+                        class="w-full bg-[#111827] border border-slate-700 rounded-xl px-4 py-3 text-white">
+
+                    {% for c in consumables %}
+
+                    <option value="{{ c.id }}"
+                        {% if selected_consumable == c.id %}
+                            selected
+                        {% endif %}
+                    >
+                        {{ c.name }}
+                    </option>
+
+                    {% endfor %}
+
+                </select>
+
+            </div>
+
+            <!-- Supplier -->
+            <div>
+
+                <label class="block text-sm text-slate-300 mb-2">
+                    Supplier
+                </label>
+
+                <select name="supplier_id"
+                        required
+                        class="w-full bg-[#111827] border border-slate-700 rounded-xl px-4 py-3 text-white">
+
+                    {% for s in suppliers %}
+
+                    <option value="{{ s.id }}">
+                        {{ s.name }}
+                    </option>
+
+                    {% endfor %}
+
+                </select>
+
+            </div>
+
+            <!-- Quantity -->
+            <div>
+
+                <label class="block text-sm text-slate-300 mb-2">
+                    Quantity
+                </label>
+
+                <input type="number"
+                       name="quantity"
+                       min="1"
+                       required
+                       class="w-full bg-[#111827] border border-slate-700 rounded-xl px-4 py-3 text-white">
+
+            </div>
+
+            <!-- Button -->
+            <div>
+
+                <button type="submit"
+                        class="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-semibold transition">
+
+                    Place Order
+
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

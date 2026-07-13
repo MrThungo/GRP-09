@@ -1,0 +1,286 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}
+Edit Test
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-6xl mx-auto">
+
+    <div class="flex justify-between items-center mb-8">
+
+        <div>
+
+            <h1 class="text-4xl font-bold text-white">
+                Edit Test
+            </h1>
+
+            <p class="text-slate-400 mt-2">
+                Update test details.
+            </p>
+
+        </div>
+
+        <a href="{{ url_for('manager.catalog') }}"
+           class="px-5 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg">
+
+            Back
+
+        </a>
+
+    </div>
+
+    <div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-8">
+
+        <form method="POST" class="space-y-8">
+
+            <div class="grid md:grid-cols-2 gap-6">
+
+                <div>
+
+                    <label class="block text-slate-400 mb-2">
+                        Test Code
+                    </label>
+
+                    <input
+                        type="text"
+                        name="code"
+                        value="{{ test.code }}"
+                        required
+                        class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white">
+
+                </div>
+
+                <div>
+
+                    <label class="block text-slate-400 mb-2">
+                        Test Name
+                    </label>
+
+                    <input
+                        type="text"
+                        name="name"
+                        value="{{ test.name }}"
+                        required
+                        class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white">
+
+                </div>
+
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+
+                <div>
+
+                    <label class="block text-slate-400 mb-2">
+                        Category
+                    </label>
+
+                    <select
+                        name="category"
+                        required
+                        class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white">
+
+                        {% for category in categories %}
+
+                        <option
+                            value="{{ category }}"
+                            {% if test.category == category %}selected{% endif %}>
+
+                            {{ category }}
+
+                        </option>
+
+                        {% endfor %}
+
+                    </select>
+
+                </div>
+
+                <div>
+
+                    <label class="block text-slate-400 mb-2">
+                        Sample Type
+                    </label>
+
+                    <select
+                        name="sample_type"
+                        required
+                        class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white">
+
+                        {% for sample in sample_types %}
+
+                        <option
+                            value="{{ sample }}"
+                            {% if test.sample_type == sample %}selected{% endif %}>
+
+                            {{ sample }}
+
+                        </option>
+
+                        {% endfor %}
+
+                    </select>
+
+                </div>
+
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-6">
+
+                <div>
+
+                    <label class="block text-slate-400 mb-2">
+                        Units
+                    </label>
+
+                    <input
+                        type="text"
+                        name="units"
+                        value="{{ test.units }}"
+                        class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white">
+
+                </div>
+
+                <div>
+
+                    <label class="block text-slate-400 mb-2">
+                        Normal Range Min
+                    </label>
+
+                    <input
+                        type="number"
+                        step="0.01"
+                        name="reference_low"
+                        value="{{ test.reference_low }}"
+                        class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white">
+
+                </div>
+
+                <div>
+
+                    <label class="block text-slate-400 mb-2">
+                        Normal Range Max
+                    </label>
+
+                    <input
+                        type="number"
+                        step="0.01"
+                        name="reference_high"
+                        value="{{ test.reference_high }}"
+                        class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white">
+
+                </div>
+
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+
+                <div>
+                    <label class="block text-slate-400 mb-2">
+                        Assigned Technicians
+                    </label>
+
+                    <div class="grid gap-2 rounded-lg border border-slate-700 bg-slate-900 p-3 sm:grid-cols-2">
+                        {% for tech in technicians %}
+                        <label class="flex items-center gap-2 rounded border border-slate-800 bg-slate-950/70 px-3 py-2 text-sm text-slate-200">
+                            <input
+                                type="checkbox"
+                                name="technician_ids"
+                                value="{{ tech.id }}"
+                                {% if tech.id in assigned_technician_ids %}checked{% endif %}
+                                class="rounded border-slate-700 bg-slate-900 text-sky-600">
+                            <span>{{ tech.full_name or tech.email }}</span>
+                        </label>
+                        {% else %}
+                        <div class="text-sm text-slate-500">
+                            No active technicians are available.
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <p class="mt-2 text-xs text-slate-500">
+                        Select one or more technicians who can perform this test.
+                    </p>
+
+                </div>
+
+                <div>
+
+                    <label class="block text-slate-400 mb-2">
+                        Turnaround Time (Minutes)
+                    </label>
+
+                    <input
+                        type="number"
+                        name="turnaround_minutes"
+                        value="{{ test.turnaround_hours }}"
+                        required
+                        class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-lg text-white">
+
+                </div>
+
+            </div>
+
+            <div>
+
+                <h2 class="text-xl font-semibold text-white mb-4">
+                    Consumables Required
+                </h2>
+
+                <div class="space-y-3">
+
+                    {% for consumable in consumables %}
+
+                    {% set existing = test_consumables
+                        | selectattr("consumable_id","equalto",consumable.id)
+                        | first %}
+
+                    <div class="flex items-center gap-4 bg-slate-900 p-4 rounded-lg">
+
+                        <input
+                            type="checkbox"
+                            name="consumable_id[]"
+                            value="{{ consumable.id }}"
+                            {% if existing %}checked{% endif %}>
+
+                        <div class="flex-1 text-white">
+
+                            {{ consumable.name }}
+
+                            <div class="text-xs text-slate-500">
+                                {{ consumable.sku }}
+                            </div>
+
+                        </div>
+
+                        <input
+                            type="number"
+                            name="quantity_{{ consumable.id }}"
+                            min="1"
+                            value="{{ existing.quantity_required if existing else 1 }}"
+                            class="w-24 px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white">
+
+                    </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </div>
+
+            <button
+                type="submit"
+                class="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg">
+
+                Save Changes
+
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Patients{% endblock %}
+{% block content %}
+<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="text-left text-slate-400 text-xs uppercase">
+      <tr><th class="px-4 py-2">MRN</th><th>Name</th><th>Email</th><th>Phone</th><th>Created</th></tr>
+    </thead>
+    <tbody>
+    {% for p in rows %}
+      <tr class="border-t border-slate-800">
+        <td class="px-4 py-2 font-mono text-xs">{{ p.mrn }}</td>
+        <td>{{ p.full_name }}</td>
+        <td class="text-slate-400">{{ p.email or '-' }}</td>
+        <td class="text-slate-400">{{ p.phone or '-' }}</td>
+        <td class="text-slate-500 text-xs">{{ p.created_at.strftime('%Y-%m-%d') }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="px-4 py-6 text-slate-500">No patients yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

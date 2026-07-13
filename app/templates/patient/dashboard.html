@@ -1,0 +1,247 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import stat_card, status_badge %}
+
+{% block page_title %}Patient dashboard{% endblock %}
+{% block head_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="mb-6 grid gap-4 lg:grid-cols-[1.3fr_0.7fr_0.7fr]">
+  <section class="surface-card p-5">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+      {{ render_avatar(current_user, size=72) }}
+      <div class="min-w-0 flex-1">
+        <div class="section-kicker">Patient portal</div>
+        <h1 class="mt-1 truncate text-2xl font-black text-white">{{ patient.full_name if patient else current_user.full_name }}</h1>
+        <p class="text-sm text-slate-400">{{ patient.mrn if patient else 'Medical record pending' }}</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <a href="{{ url_for('patient.results') }}" class="btn-primary px-3 py-2 text-xs">My results</a>
+          <a href="{{ url_for('patient.history_csv') }}" class="btn-secondary px-3 py-2 text-xs">Download CSV</a>
+          <a href="{{ url_for('patient.profile') }}" class="btn-secondary px-3 py-2 text-xs">Edit profile</a>
+        </div>
+      </div>
+    </div>
+  </section>
+  {{ stat_card("In progress", counts.in_progress, "sky") }}
+  {{ stat_card("Released results", counts.released, "emerald") }}
+</div>
+
+<div class="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+  <section class="table-card">
+    <div class="flex items-center justify-between gap-4 border-b border-slate-800 px-5 py-4">
+      <div>
+        <h2 class="text-lg font-bold text-white">In progress</h2>
+        <p class="text-sm text-slate-400">Requests that are still moving through the laboratory.</p>
+      </div>
+      <a href="{{ url_for('patient.requests_list') }}" class="text-sm font-semibold text-sky-300 hover:text-sky-200">All requests</a>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[560px] text-sm">
+        <thead class="text-left">
+          <tr>
+            <th class="px-5">Number</th>
+            <th>Status</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in pending %}
+            <tr class="border-t border-slate-800">
+              <td class="px-5 font-mono text-xs font-semibold text-sky-300">{{ r.request_number }}</td>
+              <td>{{ status_badge(r.status) }}</td>
+              <td class="text-slate-400">{{ r.created_at.strftime('%Y-%m-%d') }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td class="px-5 py-8 text-center text-slate-500" colspan="3">Nothing in progress.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="table-card">
+    <div class="flex items-center justify-between gap-4 border-b border-slate-800 px-5 py-4">
+      <div>
+        <h2 class="text-lg font-bold text-white">Notifications</h2>
+        <p class="text-sm text-slate-400">Recent updates on your account.</p>
+      </div>
+      <a href="{{ url_for('patient.notifications') }}" class="text-sm font-semibold text-sky-300 hover:text-sky-200">All</a>
+    </div>
+    <ul class="divide-y divide-slate-800 text-sm">
+      {% for n in notifs %}
+        <li class="px-5 py-3 {% if not n.read %}bg-sky-950/20{% endif %}">
+          <div class="font-semibold text-white">{{ n.title }}</div>
+          <div class="mt-1 text-xs text-slate-500">{{ n.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        </li>
+      {% else %}
+        <li class="px-5 py-8 text-center text-sm text-slate-500">No notifications.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+
+<section class="table-card mt-6">
+  <div class="flex items-center justify-between gap-4 border-b border-slate-800 px-5 py-4">
+    <div>
+      <h2 class="text-lg font-bold text-white">Recent released results</h2>
+      <p class="text-sm text-slate-400">Latest reports made available by your doctor.</p>
+    </div>
+    <a href="{{ url_for('patient.results') }}" class="text-sm font-semibold text-sky-300 hover:text-sky-200">All results</a>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[520px] text-sm">
+      <thead class="text-left">
+        <tr>
+          <th class="px-5">Request</th>
+          <th>Released</th>
+          <th>Report</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in recent %}
+          <tr class="border-t border-slate-800">
+            <td class="px-5 font-mono text-xs font-semibold text-sky-300">{{ r.request_number }}</td>
+            <td class="text-slate-300">{{ r.released_at.strftime('%Y-%m-%d') }}</td>
+            <td><a class="font-semibold text-sky-300 hover:text-sky-200" href="{{ url_for('patient.result_pdf', request_id=r.id) }}">PDF</a></td>
+          </tr>
+        {% else %}
+          <tr>
+            <td class="px-5 py-8 text-center text-slate-500" colspan="3">No released results yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="mt-6 grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+  <section class="surface-card p-5">
+    <div class="mb-4 flex items-center justify-between gap-4">
+      <div>
+        <h2 class="text-lg font-bold text-white">Result trend per test</h2>
+        <p class="text-sm text-slate-400">Numeric released results over time.</p>
+      </div>
+      <select id="trendSelect" class="px-2 py-1 text-xs"></select>
+    </div>
+    <div class="chart-frame">
+      <canvas id="trendChart" height="120"></canvas>
+    </div>
+    <div id="trendEmpty" class="hidden py-10 text-center text-sm text-slate-500">No numeric results yet - ask your doctor to release some lab results.</div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Abnormal-flag breakdown</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Normal, low and high result flags.</p>
+    <div class="chart-frame">
+      <canvas id="flagChart" height="160"></canvas>
+    </div>
+  </section>
+</div>
+
+<div class="mt-6 grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Status timeline</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Request status movement over the last 12 months.</p>
+    <div class="chart-frame">
+      <canvas id="timelineChart" height="120"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Tests by category</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Breakdown of released test types.</p>
+    <div class="chart-frame">
+      <canvas id="categoryChart" height="160"></canvas>
+    </div>
+  </section>
+</div>
+
+<script>
+(async function(){
+  const res = await fetch("{{ url_for('patient.dashboard_charts') }}");
+  const data = await res.json();
+  const C = window.Chart;
+  if (!C) return;
+
+  C.defaults.color = '#cbd5e1';
+  C.defaults.borderColor = 'rgba(148,163,184,0.15)';
+
+  const sel = document.getElementById('trendSelect');
+  const ctxT = document.getElementById('trendChart');
+  const empty = document.getElementById('trendEmpty');
+  let trendChart;
+  if (!data.trends || data.trends.length === 0) {
+    ctxT.classList.add('hidden'); empty.classList.remove('hidden');
+    sel.innerHTML = '<option>No numeric results</option>';
+  } else {
+    data.trends.forEach((t,i)=>{
+      const o = document.createElement('option');
+      o.value = i; o.textContent = t.label;
+      sel.appendChild(o);
+    });
+    function draw(idx){
+      const t = data.trends[idx];
+      const labels = t.points.map(p => p.x);
+      const values = t.points.map(p => p.y);
+      const colors = t.points.map(p => p.flag ? '#f43f5e' : '#0ea5e9');
+      const datasets = [{
+        label: t.label + (t.units ? ' ('+t.units+')' : ''),
+        data: values, borderColor: '#38bdf8',
+        backgroundColor: 'rgba(14,165,233,0.15)',
+        pointBackgroundColor: colors, pointRadius: 5, tension: 0.25, fill: true,
+      }];
+      if (t.low !== null) datasets.push({label:'Ref low', data: labels.map(()=>t.low),
+        borderColor:'#64748b', borderDash:[4,4], pointRadius:0});
+      if (t.high !== null) datasets.push({label:'Ref high', data: labels.map(()=>t.high),
+        borderColor:'#64748b', borderDash:[4,4], pointRadius:0});
+      if (trendChart) trendChart.destroy();
+      trendChart = new C(ctxT, {type:'line', data:{labels, datasets},
+        options:{responsive:true, plugins:{legend:{labels:{color:'#cbd5e1'}}},
+                 scales:{x:{ticks:{color:'#94a3b8'}}, y:{ticks:{color:'#94a3b8'}}}}});
+    }
+    sel.addEventListener('change', e => draw(+e.target.value));
+    draw(0);
+  }
+
+  const ab = data.abnormal || {normal:0, low:0, high:0};
+  new C(document.getElementById('flagChart'), {
+    type:'doughnut',
+    data:{labels:['Normal','Low','High'],
+          datasets:[{data:[ab.normal||0, ab.low||0, ab.high||0],
+                     backgroundColor:['#10b981','#f59e0b','#ef4444'], borderWidth:0}]},
+    options:{plugins:{legend:{labels:{color:'#cbd5e1'}}}}
+  });
+
+  const tl = data.timeline || {months:[], series:[]};
+  const palette = {submitted:'#64748b', samples_received:'#f59e0b',
+                   in_progress:'#0ea5e9', completed:'#6366f1',
+                   verified:'#10b981', released:'#22c55e', cancelled:'#ef4444'};
+  new C(document.getElementById('timelineChart'), {
+    type:'bar',
+    data:{labels: tl.months,
+          datasets: tl.series.map(s => ({label:s.status, data:s.data,
+                                         backgroundColor: palette[s.status] || '#94a3b8', borderRadius: 5}))},
+    options:{responsive:true,
+             plugins:{legend:{labels:{color:'#cbd5e1', font:{size:10}}}},
+             scales:{x:{stacked:true, ticks:{color:'#94a3b8'}},
+                     y:{stacked:true, ticks:{color:'#94a3b8'}, beginAtZero:true}}}
+  });
+
+  const cats = data.by_category || {};
+  new C(document.getElementById('categoryChart'), {
+    type:'bar',
+    data:{labels: Object.keys(cats),
+          datasets:[{data: Object.values(cats),
+                     backgroundColor:'#0ea5e9', borderRadius: 6}]},
+    options:{indexAxis:'y', plugins:{legend:{display:false}},
+             scales:{x:{ticks:{color:'#94a3b8'}, beginAtZero:true},
+                     y:{ticks:{color:'#94a3b8'}}}}
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,331 @@
+<!-- templates/doctor/requests.html -->
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import status_badge %}
+
+{% block page_title %}Requests{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Filter Bar -->
+    <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+        <div class="flex flex-wrap gap-4 items-end">
+            <!-- Status Filter -->
+            <div class="flex-1 min-w-[150px]">
+                <label class="text-xs text-slate-400 block mb-1">Status</label>
+                <select id="status_filter" class="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+                    <option value="">All Statuses</option>
+                    <option value="submitted">Submitted</option>
+                    <option value="samples_received">Samples Received</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="completed">Completed</option>
+                    <option value="verified">Verified</option>
+                    <option value="released">Released</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
+
+            <!-- Priority Filter -->
+            <div class="flex-1 min-w-[150px]">
+                <label class="text-xs text-slate-400 block mb-1">Priority</label>
+                <select id="priority_filter" class="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+                    <option value="">All Priorities</option>
+                    <option value="routine">Routine</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="stat">STAT</option>
+                </select>
+            </div>
+
+            <!-- Date Filter -->
+            <div class="flex-1 min-w-[180px]">
+                <label class="text-xs text-slate-400 block mb-1">Date</label>
+                <select id="date_filter" class="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+                    <option value="">All Dates</option>
+                    <option value="today" {% if request.args.get('date') == today_date %}selected{% endif %}>Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="week">Last 7 Days</option>
+                    <option value="month">Last 30 Days</option>
+                </select>
+            </div>
+
+            <!-- Search -->
+            <div class="flex-1 min-w-[200px]">
+                <label class="text-xs text-slate-400 block mb-1">Search</label>
+                <input type="text" id="search_input" placeholder="Request #, patient name or ID number..."
+                       class="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+            </div>
+
+            <button id="reset_filters" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm transition">
+                Reset
+            </button>
+        </div>
+    </div>
+
+    <!-- Requests Table -->
+    <div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+        <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+            <div class="font-medium">Test Requests</div>
+            <div class="text-sm text-slate-400">{{ requests|length }} request(s)</div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm" id="requests_table">
+                <thead class="text-left text-slate-400 text-xs uppercase bg-slate-900">
+                    <tr>
+                        <th class="px-4 py-2 cursor-pointer hover:text-white sortable" data-sort="number">Number ↓</th>
+                        <th class="px-4 py-2 cursor-pointer hover:text-white sortable" data-sort="patient">Patient</th>
+                        <th class="px-4 py-2 cursor-pointer hover:text-white sortable" data-sort="status">Status</th>
+                        <th class="px-4 py-2 cursor-pointer hover:text-white sortable" data-sort="priority">Priority</th>
+                        <th class="px-4 py-2">Samples</th>
+                        <th class="px-4 py-2 cursor-pointer hover:text-white sortable" data-sort="created">Created</th>
+                        <th class="px-4 py-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in requests %}
+                    {% set patient_id_number = r.patient.id_number or (r.patient.profile.sa_id_number if r.patient.profile else '') or '' %}
+                    <tr class="border-t border-slate-800 hover:bg-slate-900 transition request-row"
+                        data-number="{{ r.request_number|lower }}"
+                        data-patient="{{ r.patient.full_name|lower }}"
+                        data-patient-id="{{ patient_id_number|lower }}"
+                        data-status="{{ r.status }}"
+                        data-priority="{{ r.priority }}"
+                        data-created="{{ r.created_at.strftime('%Y-%m-%d') }}">
+                        <td class="px-4 py-2">
+                            <a class="text-sky-400 hover:text-sky-300"
+                               href="{{ url_for('doctor.request_detail', request_id=r.id) }}">
+                                {{ r.request_number }}
+                            </a>
+                        </td>
+                        <td>
+                            <div>{{ r.patient.full_name }}</div>
+                            {% if patient_id_number %}
+                            <div class="text-[11px] text-slate-500">ID: {{ patient_id_number }}</div>
+                            {% endif %}
+                        </td>
+                        <td>{{ status_badge(r.status) }}</td>
+                        <td>
+                            <span class="px-2 py-0.5 rounded text-xs whitespace-nowrap
+                                {% if r.priority == 'stat' %}bg-red-600 text-white
+                                {% elif r.priority == 'urgent' %}bg-orange-600 text-white
+                                {% else %}bg-slate-700 text-slate-300{% endif %}">
+                                {{ r.priority|upper }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="text-xs text-slate-400">
+                                {{ r.samples|length }} sample(s)
+                            </span>
+                        </td>
+                        <td class="whitespace-nowrap">{{ r.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td class="whitespace-nowrap">
+                            <div class="flex gap-2">
+                                <a href="{{ url_for('doctor.request_detail', request_id=r.id) }}"
+                                   class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs transition">
+                                   View
+                                </a>
+
+                                {% if r.status in ['submitted', 'samples_received'] %}
+                                <a href="{{ url_for('doctor.generate_result_pdf', request_id=r.id) }}"
+                                   target="_blank"
+                                   class="px-2.5 py-1 bg-green-700 hover:bg-red-600 rounded text-xs transition">
+                                    PDF
+                                </a>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td class="px-4 py-6 text-slate-500 text-center" colspan="7">
+                            No requests found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Filtering logic
+    const statusFilter = document.getElementById('status_filter');
+    const priorityFilter = document.getElementById('priority_filter');
+    const dateFilter = document.getElementById('date_filter');
+    const searchInput = document.getElementById('search_input');
+    const resetBtn = document.getElementById('reset_filters');
+    const requestsTable = document.getElementById('requests_table');
+    const rows = document.querySelectorAll('.request-row');
+    const today = new Date().toISOString().split('T')[0];
+
+    function filterRows() {
+        const status = statusFilter.value;
+        const priority = priorityFilter.value;
+        const dateRange = dateFilter.value;
+        const searchTerm = searchInput.value.toLowerCase();
+        const searchDigits = searchTerm.replace(/\D/g, "");
+
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            let show = true;
+
+            // Status filter
+            if (status && row.dataset.status !== status) {
+                show = false;
+            }
+
+            // Priority filter
+            if (priority && row.dataset.priority !== priority) {
+                show = false;
+            }
+
+            // Date filter
+            if (dateRange && show) {
+                const rowDate = row.dataset.created;
+                const rowDateObj = new Date(rowDate);
+                const todayObj = new Date();
+                const yesterdayObj = new Date();
+                yesterdayObj.setDate(yesterdayObj.getDate() - 1);
+                const weekAgo = new Date();
+                weekAgo.setDate(weekAgo.getDate() - 7);
+                const monthAgo = new Date();
+                monthAgo.setDate(monthAgo.getDate() - 30);
+
+                switch(dateRange) {
+                    case 'today':
+                        if (rowDate !== today) show = false;
+                        break;
+                    case 'yesterday':
+                        if (rowDate !== yesterdayObj.toISOString().split('T')[0]) show = false;
+                        break;
+                    case 'week':
+                        if (rowDateObj < weekAgo) show = false;
+                        break;
+                    case 'month':
+                        if (rowDateObj < monthAgo) show = false;
+                        break;
+                }
+            }
+
+            // Search filter
+            if (searchTerm && show) {
+                const patientId = row.dataset.patientId || '';
+                if (!row.dataset.number.includes(searchTerm) && 
+                    !row.dataset.patient.includes(searchTerm) &&
+                    !patientId.includes(searchTerm) &&
+                    !(searchDigits && patientId.includes(searchDigits))) {
+                    show = false;
+                }
+            }
+
+            row.style.display = show ? '' : 'none';
+            if (show) visibleCount++;
+        });
+
+        // Update count display
+        const countDisplay = document.querySelector('.border-b .text-slate-400');
+        if (countDisplay) {
+            countDisplay.textContent = visibleCount + ' request(s)';
+        }
+        if (window.refreshTablePagination) {
+            window.refreshTablePagination(requestsTable, { reset: true });
+        }
+    }
+
+    // Sorting logic
+    let currentSort = { column: 'number', direction: 'asc' };
+
+    function sortRows(column, direction) {
+        const tbody = document.querySelector('#requests_table tbody');
+        const rowsArray = Array.from(rows);
+
+        rowsArray.sort((a, b) => {
+            let aVal, bVal;
+
+            switch(column) {
+                case 'number':
+                    aVal = a.dataset.number;
+                    bVal = b.dataset.number;
+                    break;
+                case 'patient':
+                    aVal = a.dataset.patient;
+                    bVal = b.dataset.patient;
+                    break;
+                case 'status':
+                    aVal = a.dataset.status;
+                    bVal = b.dataset.status;
+                    break;
+                case 'priority':
+                    const priorityOrder = { 'stat': 3, 'urgent': 2, 'routine': 1 };
+                    aVal = priorityOrder[a.dataset.priority] || 0;
+                    bVal = priorityOrder[b.dataset.priority] || 0;
+                    break;
+                case 'created':
+                    aVal = a.dataset.created;
+                    bVal = b.dataset.created;
+                    break;
+                default:
+                    return 0;
+            }
+
+            if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+            if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        // Reorder DOM elements
+        rowsArray.forEach(row => tbody.appendChild(row));
+        if (window.refreshTablePagination) {
+            window.refreshTablePagination(requestsTable, { reset: true });
+        }
+    }
+
+    // Add sort event listeners
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.addEventListener('click', () => {
+            const column = header.dataset.sort;
+            const direction = currentSort.column === column && currentSort.direction === 'asc' ? 'desc' : 'asc';
+            currentSort = { column, direction };
+            
+            // Update header indicator
+            document.querySelectorAll('.sortable').forEach(h => {
+                h.innerHTML = h.innerHTML.replace(/[↓↑]/g, '').trim();
+            });
+            header.innerHTML = header.innerHTML.trim() + (direction === 'asc' ? ' ↓' : ' ↑');
+            
+            sortRows(column, direction);
+        });
+    });
+
+    // Apply filters on change
+    statusFilter.addEventListener('change', filterRows);
+    priorityFilter.addEventListener('change', filterRows);
+    dateFilter.addEventListener('change', filterRows);
+    searchInput.addEventListener('input', filterRows);
+
+    // Reset filters
+    resetBtn.addEventListener('click', () => {
+        statusFilter.value = '';
+        priorityFilter.value = '';
+        dateFilter.value = '';
+        searchInput.value = '';
+        filterRows();
+    });
+
+    // Initial filter from URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('date') === '{{ today_date }}') {
+        dateFilter.value = 'today';
+        filterRows();
+    }
+    if (urlParams.get('status')) {
+        statusFilter.value = urlParams.get('status');
+        filterRows();
+    }
+    if (urlParams.get('priority')) {
+        priorityFilter.value = urlParams.get('priority');
+        filterRows();
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,223 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import stat_card %}
+{% block page_title %}My reports{% endblock %}
+{% block head_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+  <div>
+    <div class="section-kicker">Patient report</div>
+    <h1 class="section-title mt-2 text-3xl">My lab history</h1>
+    <p class="mt-2 text-sm text-slate-400">
+      Review released laboratory results and export a polished PDF for your records.
+    </p>
+  </div>
+  <a href="{{ url_for('patient.history_csv') }}" class="btn-secondary px-4 py-2 text-sm">Download CSV</a>
+</div>
+
+<form method="get" class="surface-card mb-6 p-4">
+  <div class="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Released from</label>
+      <input type="date" name="from" value="{{ frm }}" class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Released to</label>
+      <input type="date" name="to" value="{{ to }}" class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+    <div class="flex items-end gap-2">
+      <a href="{{ url_for('patient.reports') }}" class="btn-secondary px-3 py-2 text-sm">Reset</a>
+      <button class="btn-primary px-3 py-2 text-sm" type="submit">Apply</button>
+    </div>
+  </div>
+  <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
+    <div class="text-xs text-slate-400">
+      Showing released results from {{ frm.strftime('%Y-%m-%d') }} to {{ to.strftime('%Y-%m-%d') }}.
+    </div>
+    <a href="{{ url_for('patient.reports', **{'from': frm, 'to': to, 'format': 'pdf'}) }}"
+       class="btn-primary px-4 py-2 text-sm">Export PDF</a>
+  </div>
+</form>
+
+<div class="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+  {{ stat_card("Released requests", rows|length, "sky") }}
+  {{ stat_card("Tests reported", total_tests, "emerald") }}
+  {{ stat_card("Abnormal results", abnormal, "amber") }}
+  {{ stat_card("Normal results", normal, "violet") }}
+</div>
+
+<div class="mb-6 grid gap-6 xl:grid-cols-4">
+  <section class="surface-card p-5 xl:col-span-2">
+    <h2 class="text-lg font-bold text-white">Released Result Trend</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Tests released across the selected date range.</p>
+    <div class="chart-frame">
+      <canvas id="patientReleaseChart" height="95"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Result Flags</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Normal, low and high result split.</p>
+    <div class="chart-frame">
+      <canvas id="patientFlagChart" height="180"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Report Summary</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Released requests compared with test results.</p>
+    <div class="chart-frame">
+      <canvas id="patientRequestChart" height="180"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5 xl:col-span-4">
+    <h2 class="text-lg font-bold text-white">Tests by Category</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Released results grouped by laboratory category.</p>
+    <div class="chart-frame">
+      <canvas id="patientCategoryChart" height="95"></canvas>
+    </div>
+  </section>
+</div>
+
+<section class="table-card">
+  <div class="flex flex-col gap-2 border-b border-slate-800 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h2 class="text-lg font-bold text-white">All test results grouped by category</h2>
+      <p class="mt-1 text-sm text-slate-400">
+        {% if latest_release %}
+          Latest release: {{ latest_release.strftime('%Y-%m-%d %H:%M') }}
+        {% else %}
+          No releases found.
+        {% endif %}
+      </p>
+    </div>
+    <span class="text-xs font-semibold text-slate-400">{{ total_tests }} result(s)</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[1120px] text-sm" data-page-size="10">
+      <thead class="text-left">
+        <tr>
+          <th class="px-5">Category</th>
+          <th>Released</th>
+          <th>Request #</th>
+          <th>Test</th>
+          <th>Result</th>
+          <th>Units</th>
+          <th>Reference</th>
+          <th>Flag</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for result in report_results %}
+        <tr class="border-t border-slate-800">
+          <td class="px-5 py-3 font-semibold text-sky-200">{{ result.category }}</td>
+          <td class="py-3 text-xs text-slate-400">{{ result.released.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="py-3 font-mono text-xs text-slate-300">{{ result.request_number }}</td>
+          <td class="py-3 text-slate-200">{{ result.test }}</td>
+          <td class="py-3 font-semibold text-white">{{ result.result }}</td>
+          <td class="py-3 text-slate-400">{{ result.units }}</td>
+          <td class="py-3 text-xs text-slate-400">{{ result.reference }}</td>
+          <td class="py-3">
+            {% if result.abnormal %}
+              <span class="font-semibold text-amber-300">{{ result.flag }}</span>
+            {% else %}
+              <span class="text-slate-500">Normal</span>
+            {% endif %}
+          </td>
+          <td class="py-3 pr-5 text-right">
+            <a href="{{ url_for('patient.result_pdf', request_id=result.request_id) }}"
+               class="btn-secondary px-3 py-1.5 text-xs">PDF</a>
+          </td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="9" class="px-5 py-8 text-center text-slate-500">No released results in this range.</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<script>
+  (function () {
+    const C = window.Chart;
+    if (!C) return;
+
+    C.defaults.color = '#cbd5e1';
+    C.defaults.borderColor = 'rgba(148,163,184,0.15)';
+
+    new C(document.getElementById('patientReleaseChart'), {
+      type: 'line',
+      data: {
+        labels: {{ release_chart_labels|tojson }},
+        datasets: [{
+          label: 'Released tests',
+          data: {{ release_chart_values|tojson }},
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56,189,248,0.18)',
+          fill: true,
+          tension: 0.35,
+          pointBackgroundColor: '#bae6fd',
+          pointRadius: 3
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+
+    new C(document.getElementById('patientFlagChart'), {
+      type: 'doughnut',
+      data: {
+        labels: {{ flag_chart_labels|tojson }},
+        datasets: [{
+          data: {{ flag_chart_values|tojson }},
+          backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'],
+          borderWidth: 0
+        }]
+      },
+      options: { cutout: '62%', plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } } }
+    });
+
+    new C(document.getElementById('patientRequestChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ request_chart_labels|tojson }},
+        datasets: [{
+          label: 'Count',
+          data: {{ request_chart_values|tojson }},
+          backgroundColor: ['#38bdf8', '#22c55e'],
+          borderRadius: 8
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+
+    new C(document.getElementById('patientCategoryChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ category_chart_labels|tojson }},
+        datasets: [{
+          label: 'Tests',
+          data: {{ category_chart_values|tojson }},
+          backgroundColor: '#38bdf8',
+          borderRadius: 7
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ticks: { precision: 0 } }, y: { grid: { display: false } } }
+      }
+    });
+  })();
+</script>
+{% endblock %}

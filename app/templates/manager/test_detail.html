@@ -1,0 +1,214 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}
+{{ test.name }}
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-6xl mx-auto space-y-6">
+
+<div class="flex justify-between items-center">
+
+    <div>
+
+        <h1 class="text-3xl font-bold text-white">
+            {{ test.name }}
+        </h1>
+
+        <p class="text-slate-400">
+            {{ test.code }}
+        </p>
+
+    </div>
+
+    <a href="{{ url_for('manager.catalog') }}"
+       class="px-5 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg">
+
+        Back to Catalog
+
+    </a>
+
+</div>
+
+<div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-6">
+
+    <h2 class="text-xl font-semibold text-white mb-6">
+        Test Information
+    </h2>
+
+    <div class="grid md:grid-cols-2 gap-6">
+
+        <div>
+            <div class="text-slate-400 text-sm">
+                Test Code
+            </div>
+            <div class="text-white">
+                {{ test.code }}
+            </div>
+        </div>
+
+        <div>
+            <div class="text-slate-400 text-sm">
+                Test Name
+            </div>
+            <div class="text-white">
+                {{ test.name }}
+            </div>
+        </div>
+
+        <div>
+            <div class="text-slate-400 text-sm">
+                Category
+            </div>
+            <div class="text-white">
+                {{ test.category }}
+            </div>
+        </div>
+
+        <div>
+            <div class="text-slate-400 text-sm">
+                Sample Type
+            </div>
+            <div class="text-white">
+                {{ test.sample_type or "-" }}
+            </div>
+        </div>
+
+        <div>
+            <div class="text-slate-400 text-sm">
+                Units
+            </div>
+            <div class="text-white">
+                {{ test.units or "-" }}
+            </div>
+        </div>
+
+        <div>
+            <div class="text-slate-400 text-sm">
+                Reference Range
+            </div>
+            <div class="text-white">
+                {{ test.reference_low or "-" }}
+                -
+                {{ test.reference_high or "-" }}
+            </div>
+        </div>
+
+        <div>
+            <div class="text-slate-400 text-sm">
+                Turnaround Time
+            </div>
+            <div class="text-white">
+                {{ test.turnaround_hours }} minutes
+            </div>
+        </div>
+
+        <div>
+            <div class="text-slate-400 text-sm">
+                Assigned Technician
+            </div>
+            <div class="text-white">
+                {{ test.assigned_technician or "-" }}
+            </div>
+        </div>
+
+        <div>
+            <div class="text-slate-400 text-sm">
+                Active
+            </div>
+            <div class="text-white">
+                {% if test.active %}
+                    Yes
+                {% else %}
+                    No
+                {% endif %}
+            </div>
+        </div>
+
+        <div>
+            <div class="text-slate-400 text-sm">
+                Created
+            </div>
+            <div class="text-white">
+                {{ test.created_at.strftime('%d %B %Y') }}
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-6">
+
+    <h2 class="text-xl font-semibold text-white mb-4">
+        Consumables Required
+    </h2>
+
+    {% if test.test_consumables %}
+
+    <div class="overflow-x-auto">
+
+        <table class="w-full">
+
+            <thead class="bg-slate-800 text-slate-400">
+
+                <tr>
+
+                    <th class="px-4 py-3 text-left">
+                        Consumable
+                    </th>
+
+                    <th class="px-4 py-3 text-left">
+                        SKU
+                    </th>
+
+                    <th class="px-4 py-3 text-center">
+                        Quantity Required
+                    </th>
+
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+                {% for tc in test.test_consumables %}
+
+                <tr class="border-t border-slate-800">
+
+                    <td class="px-4 py-3 text-white">
+                        {{ tc.consumable.name }}
+                    </td>
+
+                    <td class="px-4 py-3 text-slate-300">
+                        {{ tc.consumable.sku }}
+                    </td>
+
+                    <td class="px-4 py-3 text-center text-cyan-400 font-semibold">
+                        {{ tc.quantity_required }}
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+    {% else %}
+
+    <p class="text-slate-500">
+        No consumables assigned.
+    </p>
+
+    {% endif %}
+
+</div>
+
+</div>
+
+{% endblock %}

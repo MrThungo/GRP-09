@@ -1,0 +1,50 @@
+{% extends "layouts/base.html" %}
+{% block title %}Access requests{% endblock %}
+{% block page_title %}Patient access requests{% endblock %}
+{% block content %}
+<div class="space-y-6">
+  <div class="bg-slate-950 border border-slate-800 rounded-lg p-5">
+    <h2 class="text-base font-semibold mb-3">Send a new access request</h2>
+    <form method="post" class="grid sm:grid-cols-3 gap-3">
+      <select name="patient_id" required
+              class="px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+        <option value="">Select a patient…</option>
+        {% for p in patients %}
+        <option value="{{ p.id }}">{{ p.full_name }} ({{ p.email or p.mrn }})</option>
+        {% endfor %}
+      </select>
+      <input name="note" placeholder="Reason (optional)"
+             class="sm:col-span-2 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+      <button class="sm:col-span-3 px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm w-fit">Send request</button>
+    </form>
+  </div>
+
+  <div class="bg-slate-950 border border-slate-800 rounded-lg p-5">
+    <h2 class="text-base font-semibold mb-3">My access requests</h2>
+    {% if sent %}
+    <table class="w-full text-sm">
+      <thead class="text-xs text-slate-400">
+        <tr><th class="text-left py-2">Patient</th><th class="text-left">Status</th><th class="text-left">Sent</th><th class="text-left">Responded</th></tr>
+      </thead>
+      <tbody>
+        {% for ar in sent %}
+        <tr class="border-t border-slate-800">
+          <td class="py-2">{{ ar.patient.full_name }}</td>
+          <td>
+            <span class="px-2 py-0.5 rounded text-xs
+              {% if ar.status == 'accepted' %}bg-emerald-900/40 text-emerald-200
+              {% elif ar.status == 'declined' %}bg-rose-900/40 text-rose-200
+              {% else %}bg-amber-900/40 text-amber-200{% endif %}">{{ ar.status }}</span>
+          </td>
+          <td class="text-xs text-slate-400">{{ ar.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td class="text-xs text-slate-400">{{ ar.responded_at.strftime('%Y-%m-%d %H:%M') if ar.responded_at else '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-xs text-slate-400">You haven't sent any access requests yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

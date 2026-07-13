@@ -1,0 +1,185 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}
+Add Doctor
+{% endblock %}
+
+{% block content %}
+
+<div class="max-w-4xl mx-auto">
+
+    <div class="mb-8">
+
+        <h1 class="text-4xl font-bold text-white">
+            Add Doctor
+        </h1>
+
+        <p class="text-slate-400 mt-2">
+            Create a new doctor account
+        </p>
+
+    </div>
+
+    <div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-8">
+
+        <form method="POST" class="grid md:grid-cols-2 gap-6">
+
+            <div>
+
+                <label class="block text-sm text-slate-400 mb-2">
+                    First Name
+                </label>
+
+                <input
+                    type="text"
+                    name="full_name"
+                    required
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                >
+
+            </div>
+
+            <div>
+
+                <label class="block text-sm text-slate-400 mb-2">
+                    Surname
+                </label>
+
+                <input
+                    type="text"
+                    name="surname"
+                    required
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                >
+
+            </div>
+
+            <div>
+
+                <label class="block text-sm text-slate-400 mb-2">
+                    Email
+                </label>
+
+                <input
+                    type="email"
+                    name="email"
+                    required
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                >
+
+            </div>
+
+            <div>
+
+                <label class="block text-sm text-slate-400 mb-2">
+                    Phone
+                </label>
+
+                <input
+                    type="tel"
+                    name="phone"
+                    required
+                    maxlength="20"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                >
+
+            </div>
+
+            <div>
+
+                <label class="block text-sm text-slate-400 mb-2">
+                    Employee Number
+                </label>
+
+                <input
+                    type="text"
+                    name="employee_number"
+                    required
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                >
+
+            </div>
+
+            <div>
+
+                <label class="block text-sm text-slate-400 mb-2">
+                    SA ID Number
+                </label>
+
+                <input
+                    type="text"
+                    name="sa_id_number"
+                    maxlength="13"
+                    data-sa-id-source
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                >
+
+            </div>
+
+            <div>
+
+                <label class="block text-sm text-slate-400 mb-2">
+                    Gender
+                </label>
+
+                <select
+                    name="gender"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                >
+                    <option value="">Not specified</option>
+                    {% for option in gender_options %}
+                    <option value="{{ option }}">{{ option }}</option>
+                    {% endfor %}
+                </select>
+
+            </div>
+
+            <div>
+
+                <label class="block text-sm text-slate-400 mb-2">
+                    Date of Birth
+                </label>
+
+                <input
+                    type="date"
+                    name="date_of_birth"
+                    data-sa-dob-target
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                >
+
+            </div>
+
+            <div>
+
+                <label class="block text-sm text-slate-400 mb-2">
+                    HPCSA Number
+                </label>
+
+                <input
+                    type="text"
+                    name="hpcsa_number"
+                    required
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
+                >
+
+            </div>
+
+            <div class="md:col-span-2">
+
+                <button
+                    type="submit"
+                    class="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-semibold">
+
+                    Create Doctor
+
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}

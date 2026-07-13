@@ -1,0 +1,93 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}My profile{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl">
+  <div class="mb-6">
+    <div class="section-kicker">Manager profile</div>
+    <h1 class="section-title mt-2 text-3xl">My profile</h1>
+    <p class="mt-2 text-sm text-slate-400">Update your personal, contact, and account details.</p>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" class="surface-card grid gap-4 p-6 md:grid-cols-2">
+    <div class="flex items-center gap-4 border-b border-slate-800 pb-4 md:col-span-2">
+      {{ render_avatar(manager, size=64) }}
+      <div class="min-w-0 flex-1">
+        <label class="text-xs text-slate-400">Profile picture (PNG/JPG/GIF/WEBP)</label>
+        <input type="file" name="avatar" accept=".png,.jpg,.jpeg,.gif,.webp"
+               class="mt-1 w-full text-xs text-slate-300 file:mr-3 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-1 file:text-slate-200">
+      </div>
+    </div>
+
+    <div>
+      <label class="text-xs text-slate-400">Title</label>
+      <select name="title" class="mt-1 w-full px-3 py-2 text-sm">
+        <option value="">No title</option>
+        {% for option in title_options %}
+          <option value="{{ option }}" {% if manager.title == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="text-xs text-slate-400">First name</label>
+      <input name="full_name" required value="{{ manager.full_name or '' }}"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+
+    <div>
+      <label class="text-xs text-slate-400">Surname</label>
+      <input name="surname" value="{{ manager.surname or '' }}"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+
+    <div>
+      <label class="text-xs text-slate-400">Gender</label>
+      <select name="gender" class="mt-1 w-full px-3 py-2 text-sm">
+        <option value="">Not specified</option>
+        {% for option in gender_options %}
+          <option value="{{ option }}" {% if manager.gender == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="text-xs text-slate-400">Email</label>
+      <input name="email" type="email" required value="{{ manager.email or '' }}"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+
+    <div>
+      <label class="text-xs text-slate-400">Phone</label>
+      <input name="phone" value="{{ manager.phone or '' }}"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+
+    <div>
+      <label class="text-xs text-slate-400">Employee number</label>
+      <input name="employee_number" value="{{ manager.employee_number or '' }}"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+
+    <div>
+      <label class="text-xs text-slate-400">SA ID number</label>
+      <input name="sa_id_number" maxlength="13" value="{{ manager.sa_id_number or '' }}"
+             inputmode="numeric"
+             data-sa-id-source
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+
+    <div>
+      <label class="text-xs text-slate-400">Date of birth</label>
+      <input name="date_of_birth" type="date" value="{{ manager.date_of_birth or '' }}"
+             data-sa-dob-target
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+
+    <div class="flex justify-end md:col-span-2">
+      <button type="submit" class="btn-primary px-4 py-2 text-sm">Save profile</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,98 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Book a test{% endblock %}
+{% block content %}
+{% if not tests %}
+  <div class="bg-amber-900/30 border border-amber-700 text-amber-100 rounded-lg p-4 text-sm">
+    No tests are currently available. Please contact a lab manager to add tests to the catalog.
+  </div>
+{% else %}
+<form method="post" class="max-w-3xl space-y-5">
+  <div class="grid sm:grid-cols-2 gap-4">
+    <div>
+      <label for="priority" class="text-xs text-slate-400">Priority</label>
+      <select id="priority" name="priority"
+              class="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+        {% for p in priorities %}
+          <option value="{{ p }}" {% if p == 'routine' %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="test-search" class="text-xs text-slate-400">Search tests</label>
+      <input id="test-search" type="search" placeholder="e.g. glucose, CBC…"
+             class="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+    </div>
+  </div>
+
+  <div>
+    <div class="flex items-center justify-between mb-2">
+      <label class="text-xs text-slate-400">Tests <span class="text-slate-500">(<span data-selected-count>0</span> selected)</span></label>
+      <div class="flex gap-2">
+        <button type="button" data-select-all class="text-[11px] px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded">Select all</button>
+        <button type="button" data-clear-all  class="text-[11px] px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded">Clear</button>
+      </div>
+    </div>
+
+    {% set ns = namespace(cur=None) %}
+    {% set grouped = {} %}
+    {% for t in tests %}
+      {% set _ = grouped.setdefault(t.category or 'General', []).append(t) %}
+    {% endfor %}
+
+    <div data-test-list class="space-y-4 max-h-[420px] overflow-auto p-3 bg-slate-950 border border-slate-800 rounded">
+      {% for category, items in grouped.items() %}
+        <div data-cat-group>
+          <div class="text-[11px] uppercase tracking-wider text-slate-500 mb-2">{{ category }}</div>
+          <div class="grid sm:grid-cols-2 gap-2">
+            {% for t in items %}
+              <label data-test-row data-search="{{ (t.code ~ ' ' ~ t.name)|lower }}"
+                     class="flex items-start gap-2 p-2 rounded hover:bg-slate-900 cursor-pointer border border-transparent has-[:checked]:border-sky-700 has-[:checked]:bg-sky-950/30">
+                <input type="checkbox" name="test_ids" value="{{ t.id }}" class="mt-1 accent-sky-500">
+                <div class="text-sm">
+                  <div class="font-medium">{{ t.code }} ~ {{ t.name }}</div>
+                  <div class="text-[11px] text-slate-400">
+                    {% if t.units %}{{ t.units }} · {% endif %}TAT {{ t.turnaround_hours }}h
+                  </div>
+                </div>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    <label for="clinical_notes" class="text-xs text-slate-400">Reason / notes</label>
+    <textarea id="clinical_notes" name="clinical_notes"
+              class="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm h-24"></textarea>
+  </div>
+  <button type="submit" class="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm font-medium">Submit booking</button>
+</form>
+
+<script>
+  (function(){
+    const list = document.querySelector("[data-test-list]");
+    const search = document.getElementById("test-search");
+    const countEl = document.querySelector("[data-selected-count]");
+    const rows = () => list.querySelectorAll("[data-test-row]");
+    const checks = () => list.querySelectorAll('input[name="test_ids"]');
+    function updateCount(){ countEl.textContent = list.querySelectorAll('input[name="test_ids"]:checked').length; }
+    list.addEventListener("change", updateCount);
+    document.querySelector("[data-select-all]").addEventListener("click", () => {
+      checks().forEach(c => { if (!c.closest("[data-test-row]").classList.contains("hidden")) c.checked = true; });
+      updateCount();
+    });
+    document.querySelector("[data-clear-all]").addEventListener("click", () => {
+      checks().forEach(c => c.checked = false); updateCount();
+    });
+    search.addEventListener("input", () => {
+      const q = search.value.trim().toLowerCase();
+      rows().forEach(r => {
+        r.classList.toggle("hidden", q && !r.dataset.search.includes(q));
+      });
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}

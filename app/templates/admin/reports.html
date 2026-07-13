@@ -1,0 +1,313 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import stat_card %}
+{% block page_title %}Reports{% endblock %}
+{% block head_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+  <div>
+    <div class="section-kicker">Administrator report</div>
+    <h1 class="section-title mt-2 text-3xl">System governance</h1>
+    <p class="mt-2 text-sm text-slate-400">
+      A management view of account health and laboratory request activity.
+    </p>
+  </div>
+</div>
+
+<form method="get" class="surface-card mb-6 p-4">
+  <div class="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">From</label>
+      <input type="date" name="from" value="{{ frm }}" class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">To</label>
+      <input type="date" name="to" value="{{ to }}" class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+    <div class="flex items-end gap-2">
+      <a href="{{ url_for('admin.reports') }}" class="btn-secondary px-3 py-2 text-sm">Reset</a>
+      <button class="btn-primary px-3 py-2 text-sm" type="submit">Apply</button>
+    </div>
+  </div>
+  <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
+    <div class="text-xs text-slate-400">
+      Showing system activity from {{ frm.strftime('%Y-%m-%d') }} to {{ to.strftime('%Y-%m-%d') }}.
+    </div>
+    <a href="{{ url_for('admin.reports', **{'from': frm, 'to': to, 'format': 'pdf'}) }}"
+       class="btn-primary px-4 py-2 text-sm">Export PDF</a>
+  </div>
+</form>
+
+<div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+  {{ stat_card("Live users", total_users, "sky") }}
+  {{ stat_card("Requests", total_requests, "emerald") }}
+</div>
+
+<div class="mb-6 grid gap-6 xl:grid-cols-4">
+  <section class="surface-card p-5 xl:col-span-2">
+    <h2 class="text-lg font-bold text-white">Request Trend</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Requests created during the selected range.</p>
+    <div class="chart-frame">
+      <canvas id="adminReportTrendChart" height="100"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Account Health</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Live, active and restricted user accounts.</p>
+    <div class="chart-frame">
+      <canvas id="adminAccountChart" height="180"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Users by Role</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Current active role distribution.</p>
+    <div class="chart-frame">
+      <canvas id="adminRoleChart" height="180"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Requests by Status</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Workflow status in the selected range.</p>
+    <div class="chart-frame">
+      <canvas id="adminStatusChart" height="170"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <h2 class="text-lg font-bold text-white">Requests by Priority</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Routine, urgent and STAT request mix.</p>
+    <div class="chart-frame">
+      <canvas id="adminPriorityChart" height="170"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5 xl:col-span-2">
+    <h2 class="text-lg font-bold text-white">Top Doctors</h2>
+    <p class="mb-4 mt-1 text-sm text-slate-400">Doctors with the highest request volume in range.</p>
+    <div class="chart-frame">
+      <canvas id="adminDoctorChart" height="100"></canvas>
+    </div>
+  </section>
+</div>
+
+<div class="grid gap-6 xl:grid-cols-2">
+  <section class="table-card">
+    <div class="border-b border-slate-800 px-5 py-4">
+      <h2 class="text-lg font-bold text-white">Account health</h2>
+      <p class="mt-1 text-sm text-slate-400">User access and account status.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" data-page-size="10">
+        <thead class="text-left">
+          <tr><th class="px-5">Indicator</th><th>Count</th></tr>
+        </thead>
+        <tbody>
+        {% for label, count in account_rows %}
+          <tr class="border-t border-slate-800">
+            <td class="px-5 py-3 text-slate-200">{{ label }}</td>
+            <td class="py-3 font-semibold text-white">{{ count }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="table-card">
+    <div class="border-b border-slate-800 px-5 py-4">
+      <h2 class="text-lg font-bold text-white">Workflow summary</h2>
+      <p class="mt-1 text-sm text-slate-400">Request and result volume in the selected range.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" data-page-size="10">
+        <thead class="text-left">
+          <tr><th class="px-5">Indicator</th><th>Count</th></tr>
+        </thead>
+        <tbody>
+        {% for label, count in workflow_rows %}
+          <tr class="border-t border-slate-800">
+            <td class="px-5 py-3 text-slate-200">{{ label }}</td>
+            <td class="py-3 font-semibold text-white">{{ count }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<div class="mt-6 grid gap-6 xl:grid-cols-3">
+  <section class="table-card">
+    <div class="border-b border-slate-800 px-5 py-4">
+      <h2 class="text-lg font-bold text-white">Users by role</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" data-page-size="10">
+        <tbody>
+        {% for role, count in user_rows %}
+          <tr class="border-t border-slate-800">
+            <td class="px-5 py-3">{{ ROLE_LABELS.get(role, role) }}</td>
+            <td class="py-3 font-semibold text-white">{{ count }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="2" class="px-5 py-8 text-center text-slate-500">No users.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="table-card">
+    <div class="border-b border-slate-800 px-5 py-4">
+      <h2 class="text-lg font-bold text-white">Requests by status</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" data-page-size="10">
+        <tbody>
+        {% for status, count in req_rows %}
+          <tr class="border-t border-slate-800">
+            <td class="px-5 py-3">{{ status.replace('_', ' ')|title }}</td>
+            <td class="py-3 font-semibold text-white">{{ count }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="2" class="px-5 py-8 text-center text-slate-500">No requests in range.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="table-card">
+    <div class="border-b border-slate-800 px-5 py-4">
+      <h2 class="text-lg font-bold text-white">Requests by priority</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" data-page-size="10">
+        <tbody>
+        {% for priority, count in priority_rows %}
+          <tr class="border-t border-slate-800">
+            <td class="px-5 py-3">{{ priority|title }}</td>
+            <td class="py-3 font-semibold text-white">{{ count }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="2" class="px-5 py-8 text-center text-slate-500">No requests in range.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<section class="table-card mt-6">
+  <div class="border-b border-slate-800 px-5 py-4">
+    <h2 class="text-lg font-bold text-white">Top doctors</h2>
+    <p class="mt-1 text-sm text-slate-400">Doctors with the highest request count in range.</p>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm" data-page-size="10">
+      <thead class="text-left"><tr><th class="px-5">Doctor</th><th>Requests</th></tr></thead>
+      <tbody>
+      {% for name, email, count in by_doctor %}
+        <tr class="border-t border-slate-800">
+          <td class="px-5 py-3">{{ name or email or '-' }}</td>
+          <td class="py-3 font-semibold text-white">{{ count }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="2" class="px-5 py-8 text-center text-slate-500">No doctor activity in range.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<script>
+  (function () {
+    const C = window.Chart;
+    if (!C) return;
+
+    C.defaults.color = '#cbd5e1';
+    C.defaults.borderColor = 'rgba(148,163,184,0.15)';
+    const palette = ['#38bdf8', '#22c55e', '#f59e0b', '#a855f7', '#fb7185', '#14b8a6', '#6366f1'];
+
+    new C(document.getElementById('adminReportTrendChart'), {
+      type: 'line',
+      data: {
+        labels: {{ trend_chart_labels|tojson }},
+        datasets: [{
+          label: 'Requests',
+          data: {{ trend_chart_values|tojson }},
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56,189,248,0.18)',
+          fill: true,
+          tension: 0.35,
+          pointBackgroundColor: '#bae6fd',
+          pointRadius: 3
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+
+    new C(document.getElementById('adminAccountChart'), {
+      type: 'doughnut',
+      data: {
+        labels: {{ account_chart_labels|tojson }},
+        datasets: [{ data: {{ account_chart_values|tojson }}, backgroundColor: palette, borderWidth: 0 }]
+      },
+      options: { cutout: '62%', plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } } }
+    });
+
+    new C(document.getElementById('adminRoleChart'), {
+      type: 'doughnut',
+      data: {
+        labels: {{ user_chart_labels|tojson }},
+        datasets: [{ data: {{ user_chart_values|tojson }}, backgroundColor: palette, borderWidth: 0 }]
+      },
+      options: { cutout: '62%', plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } } }
+    });
+
+    new C(document.getElementById('adminStatusChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ status_chart_labels|tojson }},
+        datasets: [{ label: 'Requests', data: {{ status_chart_values|tojson }}, backgroundColor: '#38bdf8', borderRadius: 8 }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+
+    new C(document.getElementById('adminPriorityChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ priority_chart_labels|tojson }},
+        datasets: [{ label: 'Requests', data: {{ priority_chart_values|tojson }}, backgroundColor: ['#22c55e', '#f59e0b', '#ef4444'], borderRadius: 8 }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+
+    new C(document.getElementById('adminDoctorChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ doctor_chart_labels|tojson }},
+        datasets: [{ label: 'Requests', data: {{ doctor_chart_values|tojson }}, backgroundColor: '#a855f7', borderRadius: 7 }]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: { x: { beginAtZero: true, ticks: { precision: 0 } }, y: { grid: { display: false } } }
+      }
+    });
+  })();
+</script>
+{% endblock %}

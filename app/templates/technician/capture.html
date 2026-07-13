@@ -1,0 +1,175 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block page_title %}Process {{ req.request_number }}{% endblock %}
+{% block content %}
+<div class="bg-slate-950 border border-slate-800 rounded-lg p-4 mb-4 text-sm">
+  <div class="text-xs uppercase text-slate-400 mb-1">Patient context</div>
+  <div>
+    <span class="text-slate-400">Name:</span> {{ req.patient.full_name }}
+    <span class="text-slate-400 ml-3">MRN:</span> {{ req.patient.mrn }}
+    <span class="text-slate-400 ml-3">Priority:</span> {{ req.priority|upper }}
+  </div>
+  {% if req.clinical_notes %}<div class="mt-1"><span class="text-slate-400">Doctor notes:</span> {{ req.clinical_notes }}</div>{% endif %}
+  {% if req.patient.chronic_conditions %}<div class="mt-1"><span class="text-amber-300">Conditions:</span> {{ req.patient.chronic_conditions }}</div>{% endif %}
+  {% if req.patient.conditions %}<div class="mt-1"><span class="text-amber-300">Condition catalogue:</span> {{ req.patient.conditions|map(attribute='name')|join(', ') }}</div>{% endif %}
+  {% if req.patient.allergies %}<div class="mt-1"><span class="text-rose-300">Allergies:</span> {{ req.patient.allergies }}</div>{% endif %}
+  {% if req.patient.allergy_list %}<div class="mt-1"><span class="text-rose-300">Allergy catalogue:</span> {{ req.patient.allergy_list|map(attribute='name')|join(', ') }}</div>{% endif %}
+  {% if req.patient.current_medication %}<div class="mt-1"><span class="text-sky-300">Medication:</span> {{ req.patient.current_medication }}</div>{% endif %}
+  {% if req.patient.medications %}<div class="mt-1"><span class="text-sky-300">Medication catalogue:</span> {{ req.patient.medications|map(attribute='name')|join(', ') }}</div>{% endif %}
+</div>
+
+<div class="bg-slate-950 border border-slate-800 rounded-lg p-4 mb-4">
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="font-medium">Samples</h2>
+    {% if req.status == 'submitted' %}
+    <form method="post" action="{{ url_for('technician.receive_samples', request_id=req.id) }}">
+      <button class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-xs">Receive all samples</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="text-left text-slate-400 text-xs uppercase">
+        <tr>
+          <th class="py-2">Barcode</th>
+          <th>Sample type</th>
+          <th>Status</th>
+          <th>Received</th>
+          <th>Issue</th>
+          <th class="text-right">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sample in req.samples %}
+        <tr class="border-t border-slate-800">
+          <td class="py-2 font-mono">{{ sample.barcode }}</td>
+          <td>{{ sample.sample_type }}</td>
+          <td>{{ status_badge(sample.status) }}</td>
+          <td>{{ sample.received_at.strftime('%Y-%m-%d %H:%M') if sample.received_at else '-' }}</td>
+          <td class="max-w-xs">
+            {% if sample.rejection_reason %}
+              <span class="text-amber-200">{{ sample.rejection_reason }}</span>
+            {% else %}
+              <span class="text-slate-500">-</span>
+            {% endif %}
+          </td>
+          <td class="py-2">
+            {% if sample.status == 'collected' and req.status not in ['cancelled', 'released'] %}
+            <div class="flex flex-wrap justify-end gap-2">
+              <form method="post" action="{{ url_for('technician.receive_sample', sample_id=sample.id) }}">
+                <button class="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs">Receive</button>
+              </form>
+              <form method="post"
+                    action="{{ url_for('technician.reject_sample', sample_id=sample.id) }}"
+                    class="flex flex-wrap justify-end gap-2">
+                <input name="reason"
+                       required
+                       placeholder="Reject reason"
+                       class="w-40 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded text-xs">
+                <button class="px-2.5 py-1.5 bg-rose-700 hover:bg-rose-600 rounded text-xs">Reject</button>
+              </form>
+            </div>
+            {% else %}
+            <span class="block text-right text-xs text-slate-500">-</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="py-4 text-slate-500">No samples recorded.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if req.status in ['submitted', 'samples_received'] %}
+<form method="post" action="{{ url_for('technician.cancel_request', request_id=req.id) }}"
+      class="bg-slate-950 border border-rose-900 rounded-lg p-4 mb-4 flex flex-wrap gap-2">
+  <input name="reason" required placeholder="Laboratory cancellation reason"
+         class="flex-1 min-w-64 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+  <button class="px-4 py-2 bg-rose-700 hover:bg-rose-600 rounded text-sm">Cancel request</button>
+</form>
+{% endif %}
+
+<form method="post" class="space-y-3">
+  {% for it in eligible_items %}
+  <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <div class="font-medium">{{ it.test.code }} - {{ it.test.name }}</div>
+        <div class="text-xs text-slate-400 mt-1">
+          {{ it.test.category }} | {{ it.test.sample_type or 'No sample type' }} |
+          {{ it.test.units or 'No units' }} | Status: {{ it.status.replace('_', ' ')|title }}
+        </div>
+        {% if it.started_at %}
+        <div class="text-xs mt-1 {% if it.is_overdue %}text-red-400{% else %}text-emerald-400{% endif %}">
+          Expected completion: {{ it.due_at.strftime('%Y-%m-%d %H:%M') }}
+          {% if it.is_overdue %}(overdue){% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% if it.status == 'submitted' and not it.assigned_to and req.status in ['samples_received', 'in_progress'] %}
+      <button formmethod="post"
+              formaction="{{ url_for('technician.select_item', item_id=it.id) }}"
+              class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 rounded text-xs">
+        Select test
+      </button>
+      {% endif %}
+    </div>
+
+    {% if it.review_notes %}
+    <div class="mt-3 p-3 border border-amber-700 bg-amber-950/30 rounded text-sm text-amber-200">
+      Return note: {{ it.review_notes }}
+    </div>
+    {% endif %}
+
+    {% if it.assigned_to == current_user.id and it.status in ['in_progress', 'to_be_reviewed'] %}
+    <div class="grid md:grid-cols-3 gap-3 mt-3">
+      <input name="value_{{ it.id }}" placeholder="Numeric value"
+             value="{{ it.result_value if it.result_value is not none else '' }}"
+             data-capture-input="{{ it.id }}"
+             class="px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+      <input name="text_{{ it.id }}" placeholder="Text result"
+             value="{{ it.result_text or '' }}"
+             class="px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+      <input name="notes_{{ it.id }}" placeholder="Result notes"
+             value="{{ it.result_notes or '' }}"
+             class="px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+    </div>
+    <div data-flag-preview="{{ it.id }}"
+         data-low="{{ it.test.reference_low or '' }}"
+         data-high="{{ it.test.reference_high or '' }}"
+         class="mt-2 text-xs"></div>
+    {% elif it.assigned_to and it.assigned_to != current_user.id %}
+    <div class="mt-3 text-xs text-slate-500">Selected by another technician.</div>
+    {% endif %}
+
+    {% if it.review_history %}
+    <details class="mt-3 text-xs">
+      <summary class="cursor-pointer text-slate-400">Review history</summary>
+      {% for review in it.review_history|sort(attribute='created_at') %}
+      <div class="mt-1 text-slate-300">
+        {{ review.created_at.strftime('%Y-%m-%d %H:%M') }} -
+        {{ review.action.replace('_', ' ')|title }}
+        {% if review.note %}: {{ review.note }}{% endif %}
+      </div>
+      {% endfor %}
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if eligible_items|selectattr('assigned_to', 'equalto', current_user.id)|list %}
+  <div class="flex flex-wrap gap-2">
+    <button name="action" value="draft"
+            class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm font-medium">
+      Save draft
+    </button>
+    <button name="action" value="complete"
+            class="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm font-medium">
+      Save completed results
+    </button>
+  </div>
+  {% endif %}
+</form>
+{% endblock %}

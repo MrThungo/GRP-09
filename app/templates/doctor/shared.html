@@ -1,0 +1,56 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block page_title %}Shared with me{% endblock %}
+{% block content %}
+<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+  <div class="px-4 py-3 border-b border-slate-800 font-medium">
+    Test requests shared with you via patient consent
+  </div>
+  {% if not grants %}
+    <div class="px-4 py-6 text-slate-500 text-sm">No patients have shared results with you yet.</div>
+  {% else %}
+    {% for g in grants %}
+      <div class="border-t border-slate-800 px-4 py-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-medium">{{ g.patient.full_name }}
+              <span class="text-xs text-slate-400 ml-2">MRN: {{ g.patient.mrn }}</span>
+            </div>
+            <div class="text-xs text-slate-400">
+              Granted {{ g.granted_at.strftime('%Y-%m-%d %H:%M') }}
+              {% if g.note %}- <span class="italic">{{ g.note }}</span>{% endif %}
+            </div>
+          </div>
+          <div class="text-xs text-slate-400">{{ g.requests|length }} request(s)</div>
+        </div>
+        <table class="w-full text-sm mt-3">
+          <thead class="text-left text-slate-400 text-xs uppercase">
+            <tr><th class="py-1">Number</th><th>Shared tests</th><th>Status</th><th>Priority</th><th>Created</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for r in g.requests %}
+            {% set shared_items = g.items_for_request(r) %}
+            <tr class="border-t border-slate-800">
+              <td class="py-1">{{ r.request_number }}</td>
+              <td class="text-xs text-slate-400">
+                {% if g.is_full_request_shared(r) %}
+                  All {{ r.items|length }}
+                {% else %}
+                  {{ shared_items|length }} selected
+                {% endif %}
+              </td>
+              <td>{{ status_badge(r.status) }}</td>
+              <td>{{ r.priority }}</td>
+              <td>{{ r.created_at.strftime('%Y-%m-%d') }}</td>
+              <td class="text-right">
+                <a class="text-sky-400" href="{{ url_for('doctor.request_detail', request_id=r.id) }}">View</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}Edit Supplier{% endblock %}
+
+{% block content %}
+
+<div class="max-w-3xl mx-auto">
+
+<form method="POST"
+      class="bg-[#0B1120] border border-slate-800 rounded-2xl p-8 space-y-5">
+
+    <h2 class="text-2xl font-bold">
+        Edit Supplier
+    </h2>
+
+    <input name="name"
+           value="{{ supplier.name }}"
+           required
+           class="w-full px-4 py-3 bg-slate-900 rounded">
+
+    <input name="contact_name"
+           value="{{ supplier.contact_name }}"
+           class="w-full px-4 py-3 bg-slate-900 rounded">
+
+    <input name="email"
+           value="{{ supplier.email }}"
+           class="w-full px-4 py-3 bg-slate-900 rounded">
+
+    <input name="phone"
+           value="{{ supplier.phone }}"
+           class="w-full px-4 py-3 bg-slate-900 rounded">
+
+    <textarea name="address"
+              rows="4"
+              class="w-full px-4 py-3 bg-slate-900 rounded">{{ supplier.address }}</textarea>
+
+    <button class="px-6 py-3 bg-amber-600 rounded text-white">
+        Update Supplier
+    </button>
+
+</form>
+
+</div>
+
+{% endblock %}

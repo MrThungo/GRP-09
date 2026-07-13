@@ -1,0 +1,80 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Recycle bin{% endblock %}
+{% block content %}
+<div class="space-y-5">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-white">Recycle bin</h1>
+      <p class="text-sm text-slate-400">
+        Deleted records are hidden from normal screens. Restore them here, or permanently delete records that are not linked to lab history.
+      </p>
+    </div>
+    <div class="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-400">
+      
+    </div>
+  </div>
+
+  {% set total = sections|map(attribute='rows')|map('length')|sum %}
+  {% if total == 0 %}
+    <div class="rounded-lg border border-slate-800 bg-slate-950 p-8 text-center text-sm text-slate-400">
+      The recycle bin is empty.
+    </div>
+  {% endif %}
+
+  {% for section in sections %}
+    {% if section.rows %}
+      <section class="overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
+        <div class="border-b border-slate-800 px-4 py-3">
+          <h2 class="font-semibold text-white">{{ section.title }}</h2>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" data-page-size="10">
+            <thead class="text-left text-xs uppercase text-slate-400">
+              <tr>
+                <th class="px-4 py-2">Item</th>
+                <th>Details</th>
+                <th>Deleted</th>
+                <th>Deleted by</th>
+                <th class="text-right pr-4">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in section.rows %}
+                <tr class="border-t border-slate-800">
+                  <td class="px-4 py-3 font-medium text-white">{{ row.name }}</td>
+                  <td class="text-slate-400">{{ row.detail or '-' }}</td>
+                  <td class="text-xs text-slate-400">
+                    {{ row.deleted_at.strftime('%Y-%m-%d %H:%M') if row.deleted_at else '-' }}
+                  </td>
+                  <td class="text-xs text-slate-400">
+                    {{ deleted_by_names.get(row.deleted_by, '-') }}
+                  </td>
+                  <td class="pr-4">
+                    <div class="flex flex-wrap justify-end gap-2">
+                    <form method="post"
+                          action="{{ url_for('manager.recycle_restore', kind=row.kind, record_id=row.id) }}"
+                          data-confirm-message="Restore {{ row.name|e }}?">
+                      <button class="rounded bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600">
+                        Restore
+                      </button>
+                    </form>
+                    <form method="post"
+                          action="{{ url_for('manager.recycle_hard_delete', kind=row.kind, record_id=row.id) }}"
+                          data-confirm-message="Permanently delete {{ row.name|e }}? This cannot be undone."
+                          data-confirm-label="Delete forever">
+                      <button class="rounded bg-red-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700">
+                        Delete forever
+                      </button>
+                    </form>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endblock %}

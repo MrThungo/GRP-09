@@ -1,0 +1,176 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Consumable Orders{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6">
+  <div>
+    <h1 class="text-3xl font-bold text-white">Consumable Orders</h1>
+    <p class="text-slate-400 mt-1">Create supplier-grouped orders and track each item separately.</p>
+  </div>
+
+  <form method="post" class="bg-slate-950 border border-slate-800 rounded-lg p-6 space-y-4">
+    <div class="grid md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm text-slate-400 mb-2">Order number</label>
+        <input name="order_number" placeholder="Auto-generated if blank"
+               class="w-full bg-slate-900 border border-slate-700 rounded px-4 py-3 text-white">
+      </div>
+      <div>
+        <label class="block text-sm text-slate-400 mb-2">Supplier</label>
+        <select name="supplier_id" required
+                class="w-full bg-slate-900 border border-slate-700 rounded px-4 py-3 text-white">
+          <option value="">Select supplier</option>
+          {% for supplier in suppliers %}
+          <option value="{{ supplier.id }}">{{ supplier.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <div class="flex items-center justify-between mb-2">
+        <label class="text-sm text-slate-400">Order items</label>
+        <button type="button" id="add-order-item"
+                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs">Add item</button>
+      </div>
+      <div id="order-items" class="space-y-2">
+        <div class="order-item grid grid-cols-[1fr_8rem_2.5rem] gap-2">
+          <select name="consumable_id" required
+                  class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white">
+            <option value="">Select consumable</option>
+            {% for consumable in consumables %}
+            <option value="{{ consumable.id }}">
+              {{ consumable.name }}{% if consumable.supplier %} - {{ consumable.supplier.name }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <input type="number" name="quantity" min="1" value="1" required
+                 class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white">
+          <button type="button" data-remove-item
+                  class="bg-rose-900/40 hover:bg-rose-900 text-rose-300 rounded">x</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 rounded font-medium">
+      Place Order
+    </button>
+  </form>
+
+  <div class="space-y-4">
+    {% for order in orders %}
+    <section class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+      <div class="px-5 py-4 bg-slate-900 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div class="font-medium text-cyan-300">{{ order.order_number }}</div>
+          <div class="text-xs text-slate-400">
+            {{ order.supplier.name if order.supplier else '-' }} |
+            {{ order.ordered_at.strftime('%Y-%m-%d %H:%M') }} |
+            {{ order.status.replace('_', ' ')|title }}
+          </div>
+        </div>
+        {% if order.status not in ['complete', 'cancelled'] %}
+        <form method="post" action="{{ url_for('manager.cancel_order', order_id=order.id) }}"
+              class="flex gap-2">
+          <input name="reason" required placeholder="Cancellation reason"
+                 class="px-3 py-2 bg-slate-950 border border-slate-700 rounded text-xs">
+          <button class="px-3 py-2 bg-rose-700 hover:bg-rose-600 rounded text-xs">Cancel order</button>
+        </form>
+        {% endif %}
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-left text-xs uppercase text-slate-400">
+            <tr>
+              <th class="px-5 py-3">Consumable</th>
+              <th>Ordered</th>
+              <th>Received</th>
+              <th>Status</th>
+              <th>Received/Cancelled</th>
+              <th class="px-5">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if order.items %}
+              {% for item in order.items %}
+              <tr class="border-t border-slate-800">
+                <td class="px-5 py-3">{{ item.consumable.name }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ item.received_quantity }}</td>
+                <td>{{ item.status|title }}</td>
+                <td>
+                  {% if item.received_at %}{{ item.received_at.strftime('%Y-%m-%d %H:%M') }}
+                  {% elif item.cancelled_at %}{{ item.cancelled_at.strftime('%Y-%m-%d %H:%M') }}: {{ item.cancel_reason }}
+                  {% else %}-{% endif %}
+                </td>
+                <td class="px-5 py-3">
+                  {% if item.status == 'ordered' %}
+                  <div class="flex flex-wrap gap-2">
+                    <form method="post" action="{{ url_for('manager.receive_order_item', item_id=item.id) }}">
+                      <button class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-xs">
+                        Receive full quantity
+                      </button>
+                    </form>
+                    <form method="post" action="{{ url_for('manager.cancel_order_item', item_id=item.id) }}"
+                          class="flex gap-2">
+                      <input name="reason" required placeholder="Reason"
+                             class="w-32 px-2 py-1.5 bg-slate-900 border border-slate-700 rounded text-xs">
+                      <button class="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 rounded text-xs">Cancel item</button>
+                    </form>
+                  </div>
+                  {% else %}-{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr class="border-t border-slate-800">
+                <td class="px-5 py-3">{{ order.consumable.name if order.consumable else '-' }}</td>
+                <td>{{ order.quantity }}</td>
+                <td>{{ order.received_quantity }}</td>
+                <td>{{ order.status.replace('_', ' ')|title }}</td>
+                <td>{{ order.received_at.strftime('%Y-%m-%d %H:%M') if order.received_at else '-' }}</td>
+                <td class="px-5 py-3 text-slate-500">Legacy order</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% else %}
+    <div class="bg-slate-950 border border-slate-800 rounded-lg p-8 text-center text-slate-500">
+      No consumable orders found.
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<template id="order-item-template">
+  <div class="order-item grid grid-cols-[1fr_8rem_2.5rem] gap-2">
+    <select name="consumable_id" required
+            class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white">
+      <option value="">Select consumable</option>
+      {% for consumable in consumables %}
+      <option value="{{ consumable.id }}">
+        {{ consumable.name }}{% if consumable.supplier %} - {{ consumable.supplier.name }}{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    <input type="number" name="quantity" min="1" value="1" required
+           class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-white">
+    <button type="button" data-remove-item
+            class="bg-rose-900/40 hover:bg-rose-900 text-rose-300 rounded">x</button>
+  </div>
+</template>
+<script>
+  const items = document.getElementById("order-items");
+  const template = document.getElementById("order-item-template");
+  document.getElementById("add-order-item").addEventListener("click", () => {
+    items.appendChild(template.content.cloneNode(true));
+  });
+  items.addEventListener("click", event => {
+    if (!event.target.matches("[data-remove-item]")) return;
+    const rows = items.querySelectorAll(".order-item");
+    if (rows.length > 1) event.target.closest(".order-item").remove();
+  });
+</script>
+{% endblock %}

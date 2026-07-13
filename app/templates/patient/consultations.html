@@ -1,0 +1,68 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Consultations{% endblock %}
+{% block content %}
+{% set labels = {
+  'offered': 'Choose consultation type',
+  'online_requested': 'Online requested',
+  'in_person_requested': 'In-person requested',
+  'invited': 'Respond to invite',
+  'accepted': 'Accepted',
+  'declined': 'Declined',
+  'started': 'Live now',
+  'completed': 'Completed',
+  'cancelled': 'Cancelled'
+} %}
+
+<div class="mb-5">
+  <p class="section-kicker">Result discussions</p>
+  <h1 class="mt-1 text-2xl font-black text-white">Consultations</h1>
+  <p class="mt-1 text-sm text-slate-400">Choose how to discuss released results and join invite-only online sessions.</p>
+</div>
+
+<div class="grid gap-4">
+  {% for c in consultations %}
+  <section class="surface-card p-4">
+    <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="rounded bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200">
+            {{ labels.get(c.status, c.status.replace('_', ' ')|title) }}
+          </span>
+          {% if c.patient_preference %}
+            <span class="rounded bg-sky-950 px-2 py-1 text-xs font-bold text-sky-200">
+              {{ c.patient_preference.replace('_', ' ')|title }}
+            </span>
+          {% endif %}
+        </div>
+        <h2 class="mt-3 font-mono text-sm font-bold text-sky-300">{{ c.request.request_number }}</h2>
+        <p class="mt-1 text-sm text-slate-400">
+          Doctor: {{ c.doctor.full_name or c.doctor.email }}
+        </p>
+        <p class="mt-1 text-sm text-slate-400">
+          {% if c.scheduled_at %}
+            Meeting: <span class="text-slate-200">{{ c.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</span>
+          {% else %}
+            No online meeting time yet.
+          {% endif %}
+        </p>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        <a href="{{ url_for('patient.consultation_detail', consultation_id=c.id) }}" class="btn-secondary px-3 py-2 text-sm">Details</a>
+        {% if c.status == 'accepted' %}
+          <a href="{{ url_for('patient.consultation_waiting', consultation_id=c.id, room_token=c.room_token) }}"
+             class="btn-primary px-3 py-2 text-sm">Waiting room</a>
+        {% elif c.status == 'started' %}
+          <a href="{{ url_for('patient.consultation_room', consultation_id=c.id, room_token=c.room_token) }}"
+             class="btn-primary px-3 py-2 text-sm">Join live</a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+  {% else %}
+  <div class="surface-card p-8 text-center text-slate-400">
+    No consultations yet. When your doctor releases results, any discussion choices will appear here.
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

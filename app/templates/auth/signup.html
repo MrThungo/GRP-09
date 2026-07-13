@@ -1,0 +1,75 @@
+{% extends "layouts/base.html" %}
+{% block title %}Sign up{% endblock %}
+{% block public %}
+<div class="auth-shell min-h-screen px-4 py-10">
+  <div class="mx-auto w-full max-w-4xl auth-card p-6 sm:p-8">
+    <div class="flex flex-col gap-5 border-b border-slate-800 pb-6 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <a href="{{ url_for('public.landing') }}" class="text-xs font-medium text-slate-400 hover:text-slate-200">Back to home</a>
+        <div class="mt-4 flex items-center gap-3">
+          <span class="brand-mark grid h-11 w-11 place-items-center rounded-lg text-lg font-black text-white">N</span>
+          <div>
+            <h1 class="text-2xl font-extrabold tracking-tight text-white">Patient registration</h1>
+            <p class="text-sm text-slate-400">Create your portal account to view requests, results and reports.</p>
+          </div>
+        </div>
+      </div>
+      <a class="btn-secondary px-4 py-2 text-sm" href="{{ url_for('auth.login') }}">Sign in instead</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in messages %}
+        <div class="flash-message mt-4
+                    {% if cat == 'error' %}bg-red-950/60 text-red-100 border border-red-800/80
+                    {% else %}bg-emerald-950/60 text-emerald-100 border border-emerald-800/80{% endif %}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% set f = form or {} %}
+    <form method="post" class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">First name</label>
+        <input name="first_name" type="text" required maxlength="120" value="{{ f.first_name or '' }}"
+               class="mt-1 w-full px-3 py-2.5 text-sm">
+      </div>
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Surname</label>
+        <input name="surname" type="text" required maxlength="120" value="{{ f.surname or '' }}"
+               class="mt-1 w-full px-3 py-2.5 text-sm">
+      </div>
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">South African ID number</label>
+        <input name="id_number" type="text" required pattern="\d{13}" maxlength="13" value="{{ f.id_number or '' }}"
+               data-sa-id-source
+               class="mt-1 w-full px-3 py-2.5 font-mono text-sm">
+      </div>
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Date of birth</label>
+        <input name="date_of_birth" type="date" value="{{ f.date_of_birth or '' }}" data-sa-dob-target
+               class="mt-1 w-full px-3 py-2.5 text-sm">
+      </div>
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Cellphone</label>
+        <input name="cellphone" type="tel" required maxlength="20" value="{{ f.cellphone or '' }}"
+               class="mt-1 w-full px-3 py-2.5 text-sm">
+      </div>
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Email used as username</label>
+        <input name="email" type="email" required autocomplete="email" value="{{ f.email or '' }}"
+               class="mt-1 w-full px-3 py-2.5 text-sm">
+      </div>
+      <div class="sm:col-span-2">
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Home address</label>
+        <textarea name="address" required rows="3"
+                  class="mt-1 w-full px-3 py-2.5 text-sm">{{ f.address or '' }}</textarea>
+      </div>
+
+      <div class="sm:col-span-2 rounded-lg border border-sky-800 bg-slate-950 p-4 text-sm text-sky-100">
+        A temporary password will be generated automatically. After registering, you will be signed in and prompted to set your own password.
+      </div>
+
+      <button type="submit" class="btn-primary sm:col-span-2 px-4 py-3 text-sm">Create account</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends "layouts/base.html" %}
+{% block title %}Access requests{% endblock %}
+{% block page_title %}Doctor access requests{% endblock %}
+{% block content %}
+<div class="space-y-6">
+  <div class="bg-slate-950 border border-slate-800 rounded-lg p-5">
+    <h2 class="text-base font-semibold mb-3">Pending requests from doctors</h2>
+    {% if pending %}
+    <div class="space-y-3">
+      {% for ar in pending %}
+      <div class="space-y-3 rounded border border-slate-800 p-3">
+        <div class="flex items-start justify-between gap-4">
+          <div class="text-sm">
+            <div class="font-medium">Dr. {{ ar.doctor.full_name or ar.doctor.email }}</div>
+            <div class="text-xs text-slate-400">Sent {{ ar.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+            {% if ar.note %}<div class="mt-1 text-xs text-slate-300">"{{ ar.note }}"</div>{% endif %}
+          </div>
+          <form method="post" action="{{ url_for('patient.access_request_decline', req_id=ar.id) }}">
+            <button class="rounded bg-rose-600 px-3 py-1.5 text-xs hover:bg-rose-500">Decline</button>
+          </form>
+        </div>
+
+        <form method="post" action="{{ url_for('patient.access_request_accept', req_id=ar.id) }}" class="space-y-3">
+          <div class="text-xs font-semibold uppercase tracking-wide text-slate-400">Choose results to share</div>
+          <div class="max-h-72 space-y-3 overflow-y-auto rounded border border-slate-800 bg-slate-900 p-3">
+            {% for r in requests %}
+              <div class="rounded border border-slate-800 bg-slate-950 p-3" data-consent-request>
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div class="font-mono text-xs text-sky-300">{{ r.request_number }}</div>
+                    <div class="text-xs text-slate-400">
+                      {{ r.created_at.strftime('%Y-%m-%d') }} - {{ r.status.replace('_', ' ')|title }}
+                    </div>
+                  </div>
+                  <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-200">
+                    <input type="checkbox" data-consent-all>
+                    <span>Select all</span>
+                  </label>
+                </div>
+                <div class="mt-3 space-y-2">
+                  {% for item in r.items %}
+                    <label class="flex items-start gap-2 rounded border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs">
+                      <input type="checkbox" name="item_ids" value="{{ item.id }}" data-consent-item class="mt-0.5">
+                      <span class="min-w-0">
+                        <span class="block font-semibold text-white">{{ item.test.name }}</span>
+                        <span class="block text-slate-400">{{ item.test.code }} - {{ item.status.replace('_', ' ')|title }}</span>
+                      </span>
+                    </label>
+                  {% else %}
+                    <div class="text-xs text-slate-500">No tests are attached to this request.</div>
+                  {% endfor %}
+                </div>
+              </div>
+            {% else %}
+              <div class="text-xs text-slate-500">You have no test requests to share.</div>
+            {% endfor %}
+          </div>
+          <button class="rounded bg-emerald-600 px-3 py-1.5 text-xs hover:bg-emerald-500"
+                  {% if not requests %}disabled{% endif %}>
+            Accept and share selected results
+          </button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-xs text-slate-400">No pending requests.</p>
+    {% endif %}
+  </div>
+
+  <div class="bg-slate-950 border border-slate-800 rounded-lg p-5">
+    <h2 class="text-base font-semibold mb-3">History</h2>
+    {% if history %}
+    <table class="w-full text-sm">
+      <thead class="text-xs text-slate-400">
+        <tr><th class="text-left py-2">Doctor</th><th class="text-left">Status</th><th class="text-left">Responded</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for ar in history %}
+        <tr class="border-t border-slate-800">
+          <td class="py-2">Dr. {{ ar.doctor.full_name or ar.doctor.email }}</td>
+          <td class="capitalize">{{ ar.status }}</td>
+          <td class="text-xs text-slate-400">{{ ar.responded_at.strftime('%Y-%m-%d %H:%M') if ar.responded_at }}</td>
+          <td class="text-right">
+            {% if ar.status == 'accepted' and ar.grant_id and ar.grant and ar.grant.is_active %}
+              <form method="post" action="{{ url_for('patient.consent_revoke', grant_id=ar.grant_id) }}"
+                    data-confirm-message="Revoke access for this doctor?">
+                <button class="px-3 py-1 bg-rose-700 hover:bg-rose-600 rounded text-xs">Revoke access</button>
+              </form>
+            {% elif ar.status == 'accepted' %}
+              <span class="text-xs text-slate-500">Revoked</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-xs text-slate-400">No history yet.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

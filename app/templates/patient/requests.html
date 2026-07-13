@@ -1,0 +1,89 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block page_title %}My requests{% endblock %}
+{% block content %}
+<form method="get" class="mb-4 rounded-lg border border-slate-800 bg-slate-950 p-4">
+  <div class="grid gap-3 md:grid-cols-6">
+    <div class="md:col-span-2">
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Search request</label>
+      <input name="q" value="{{ filters.q }}" placeholder="Request number"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Status</label>
+      <select name="status" class="mt-1 w-full px-3 py-2 text-sm">
+        <option value="">All statuses</option>
+        {% for status in statuses %}
+          <option value="{{ status }}" {% if filters.status == status %}selected{% endif %}>
+            {{ status.replace('_', ' ')|title }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Priority</label>
+      <select name="priority" class="mt-1 w-full px-3 py-2 text-sm">
+        <option value="">All priorities</option>
+        {% for priority in priorities %}
+          <option value="{{ priority }}" {% if filters.priority == priority %}selected{% endif %}>
+            {{ priority|title }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">From</label>
+      <input name="created_from" type="date" value="{{ filters.created_from }}"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">To</label>
+      <input name="created_to" type="date" value="{{ filters.created_to }}"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+  </div>
+  <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+    <div class="text-xs text-slate-400">{{ requests|length }} request(s) found</div>
+    <div class="flex gap-2">
+      <a href="{{ url_for('patient.requests_list') }}" class="btn-secondary px-3 py-2 text-xs">Reset</a>
+      <button class="btn-primary px-3 py-2 text-xs" type="submit">Apply filters</button>
+    </div>
+  </div>
+</form>
+
+<div class="rounded-lg border border-slate-800 bg-slate-950 overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[720px] text-sm">
+      <thead class="text-left text-slate-400 text-xs uppercase">
+        <tr>
+          <th class="px-4 py-2">Number</th>
+          <th>Status</th>
+          <th>Priority</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in requests %}
+        <tr class="border-t border-slate-800">
+          <td class="px-4 py-2 font-mono text-xs">{{ r.request_number }}</td>
+          <td>{{ status_badge(r.status) }}</td>
+          <td>{{ r.priority|title }}</td>
+          <td class="text-slate-400 text-xs">{{ r.created_at.strftime('%Y-%m-%d') }}</td>
+          <td class="text-right pr-3">
+            <div class="flex justify-end gap-2">
+              <a href="{{ url_for('patient.request_pdf', request_id=r.id) }}"
+                 class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-[11px]">PDF</a>
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr>
+          <td class="px-4 py-6 text-center text-slate-500" colspan="5">No requests match these filters.</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

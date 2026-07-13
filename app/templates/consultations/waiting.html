@@ -1,0 +1,36 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Waiting room{% endblock %}
+{% block content %}
+<section class="consult-waiting"
+         data-consultation-waiting
+         data-status-url="{{ url_for('api.consultation_status', consultation_id=consultation.id, room_token=consultation.room_token) }}"
+         data-join-url="{{ url_for('patient.consultation_room', consultation_id=consultation.id, room_token=consultation.room_token) }}">
+  <div class="consult-calm-visual" aria-hidden="true">
+    <span></span>
+    <span></span>
+    <span></span>
+  </div>
+  <div class="consult-waiting-content">
+    <p class="section-kicker">Private waiting room</p>
+    <h1>Take a moment. Your doctor will let you in soon.</h1>
+    <p>
+      This calm room will automatically move you into the secure consultation
+      once your doctor opens the live session.
+    </p>
+    <div class="consult-waiting-card">
+      <div>
+        <span>Result request</span>
+        <strong>{{ consultation.request.request_number }}</strong>
+      </div>
+      <div>
+        <span>Meeting time</span>
+        <strong>{{ consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') if consultation.scheduled_at else 'Accepted' }}</strong>
+      </div>
+      <div>
+        <span>Status</span>
+        <strong data-consultation-waiting-status>Waiting for doctor to start</strong>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

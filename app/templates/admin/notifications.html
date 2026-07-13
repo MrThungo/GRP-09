@@ -1,0 +1,24 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}All notifications{% endblock %}
+{% block content %}
+<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="text-left text-slate-400 text-xs uppercase">
+      <tr><th class="px-4 py-2">When</th><th>To</th><th>Title</th><th>Body</th><th>Read</th></tr>
+    </thead>
+    <tbody>
+    {% for n in rows %}
+      <tr class="border-t border-slate-800">
+        <td class="px-4 py-2 text-xs">{{ n.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td class="font-mono text-[10px] text-slate-400">{{ n.user_id[:8] }}</td>
+        <td>{{ n.title }}</td>
+        <td class="text-slate-400 text-xs">{{ n.body or '' }}</td>
+        <td>{% if n.read %}<span class="text-slate-500 text-xs">yes</span>{% else %}<span class="text-amber-400 text-xs">no</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="px-4 py-6 text-slate-500">No notifications.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

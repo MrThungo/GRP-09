@@ -1,0 +1,60 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Test catalog{% endblock %}
+{% block content %}
+<div class="grid md:grid-cols-3 gap-4">
+  <form method="post" action="{{ url_for('admin.tests_new') }}"
+        class="bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-2">
+    <div class="font-medium mb-1">Add test</div>
+    <input name="code" placeholder="Code (CBC)" required
+           class="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded text-sm">
+    <input name="name" placeholder="Name" required
+           class="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded text-sm">
+    <input name="category" placeholder="Category"
+           class="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded text-sm">
+    <select name="sample_type" required
+            class="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded text-sm">
+      <option value="">Sample type</option>
+      {% for sample in sample_types %}
+        <option value="{{ sample.name }}">{{ sample.name }}</option>
+      {% endfor %}
+    </select>
+    <input name="units" placeholder="Units (g/dL)"
+           class="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded text-sm">
+    <input name="turnaround_hours" type="number" min="1" value="24"
+           class="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded text-sm">
+    <button class="w-full py-1 bg-sky-600 hover:bg-sky-500 rounded text-sm">Add</button>
+  </form>
+  <div class="md:col-span-2 bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="text-left text-slate-400 text-xs uppercase">
+        <tr><th class="px-4 py-2">Code</th><th>Name</th><th>Cat.</th><th>Sample</th><th>Units</th><th>TAT</th><th>Active</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for t in rows %}
+        <tr class="border-t border-slate-800">
+          <td class="px-4 py-2 font-mono">{{ t.code }}</td>
+          <td>{{ t.name }}</td>
+          <td class="text-slate-400">{{ t.category }}</td>
+          <td class="text-slate-400">{{ t.sample_type or '-' }}</td>
+          <td>{{ t.units or '-' }}</td>
+          <td>{{ t.turnaround_hours }}m</td>
+          <td>
+            {% if t.active %}<span class="text-emerald-400 text-xs">yes</span>
+            {% else %}<span class="text-slate-500 text-xs">no</span>{% endif %}
+          </td>
+          <td class="text-right pr-3">
+            <form method="post" action="{{ url_for('admin.tests_toggle', tid=t.id) }}" class="inline">
+              <button class="text-xs px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded">Change</button>
+            </form>
+            <form method="post" action="{{ url_for('admin.tests_delete', tid=t.id) }}" class="inline"
+                  data-confirm-message="Delete {{ t.code|e }}?">
+              <button class="text-xs px-2 py-1 bg-rose-800 hover:bg-rose-700 rounded">Del</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

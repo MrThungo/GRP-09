@@ -1,0 +1,122 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}My results{% endblock %}
+{% block content %}
+<form method="get" class="mb-4 rounded-lg border border-slate-800 bg-slate-950 p-4">
+  <div class="grid gap-3 md:grid-cols-5">
+    <div class="md:col-span-2">
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Search</label>
+      <input name="q" value="{{ filters.q }}" placeholder="Request number, test code or test name"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Flag</label>
+      <select name="flag" class="mt-1 w-full px-3 py-2 text-sm">
+        <option value="">All results</option>
+        <option value="normal" {% if filters.flag == 'normal' %}selected{% endif %}>Normal only</option>
+        <option value="abnormal" {% if filters.flag == 'abnormal' %}selected{% endif %}>Any abnormal</option>
+        <option value="low" {% if filters.flag == 'low' %}selected{% endif %}>Low</option>
+        <option value="high" {% if filters.flag == 'high' %}selected{% endif %}>High</option>
+      </select>
+    </div>
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Released from</label>
+      <input name="released_from" type="date" value="{{ filters.released_from }}"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+    <div>
+      <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Released to</label>
+      <input name="released_to" type="date" value="{{ filters.released_to }}"
+             class="mt-1 w-full px-3 py-2 text-sm">
+    </div>
+  </div>
+  <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+    <div class="text-xs text-slate-400">{{ requests|length }} released result request(s) found</div>
+    <div class="flex gap-2">
+      <a href="{{ url_for('patient.results') }}" class="btn-secondary px-3 py-2 text-xs">Reset</a>
+      <button class="btn-primary px-3 py-2 text-xs" type="submit">Apply filters</button>
+    </div>
+  </div>
+</form>
+
+{% for r in requests %}
+{% set shown_items = display_items.get(r.id, r.items) %}
+{% set consultation = consultations_by_request.get(r.id) %}
+<div class="mb-4 rounded-lg border border-slate-800 bg-slate-950 p-4">
+  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <div class="font-medium">
+        {{ r.request_number }}
+        {% if r.status == 'released' %}
+          <span class="ml-2 rounded bg-sky-800 px-2 py-0.5 text-[10px] text-sky-100">released</span>
+        {% endif %}
+      </div>
+      <div class="text-xs text-slate-400">
+        Released {{ r.released_at.strftime('%Y-%m-%d %H:%M') if r.released_at else '-' }}
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      {% if consultation %}
+        <a class="btn-secondary px-3 py-1.5 text-sm"
+           href="{{ url_for('patient.consultation_detail', consultation_id=consultation.id) }}">
+          Consultation
+        </a>
+      {% endif %}
+      <a class="btn-primary px-3 py-1.5 text-sm"
+         href="{{ url_for('patient.result_pdf', request_id=r.id) }}">Download PDF</a>
+    </div>
+  </div>
+  {% if consultation %}
+    <div class="mt-3 rounded border border-sky-900 bg-sky-950/30 p-3 text-sm text-sky-100">
+      Consultation status:
+      <span class="font-semibold">{{ consultation.status.replace('_', ' ')|title }}</span>
+      {% if consultation.scheduled_at %}
+        <span class="ml-2 text-sky-200">Meeting {{ consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      {% endif %}
+    </div>
+  {% endif %}
+  <div class="mt-3 overflow-x-auto">
+    <table class="w-full min-w-[720px] text-sm">
+      <thead class="text-left text-slate-400 text-xs uppercase">
+        <tr>
+          <th class="py-1">Test</th>
+          <th>Result</th>
+          <th>Units</th>
+          <th>Reference</th>
+          <th>Flag</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in shown_items %}
+        <tr class="border-t border-slate-800">
+          <td class="py-1">{{ it.test.code }} - {{ it.test.name }}</td>
+          <td>{{ it.result_value if it.result_value is not none else (it.result_text or '-') }}</td>
+          <td>{{ it.test.units or '' }}</td>
+          <td class="text-slate-400 text-xs">{{ it.test.reference_low }}-{{ it.test.reference_high }}</td>
+          <td>
+            {% if it.abnormal_flag %}
+              <span class="font-semibold text-amber-400">{{ it.abnormal_flag|upper }}</span>
+            {% else %}
+              <span class="text-slate-500">Normal</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td class="py-6 text-center text-slate-500" colspan="5">No tests match these filters.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if r.release_note %}
+  <div class="mt-3 rounded border border-sky-800 bg-sky-950/30 p-3 text-sm">
+    <span class="text-sky-300">Doctor note:</span> {{ r.release_note }}
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="rounded-lg border border-slate-800 bg-slate-950 p-6 text-center text-slate-400">
+  No released results match these filters.
+</div>
+{% endfor %}
+{% endblock %}

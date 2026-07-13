@@ -1,0 +1,63 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Online consultation{% endblock %}
+{% block content %}
+<section class="consult-room"
+         data-consultation-room
+         data-role="{{ role }}"
+         data-started="{{ '1' if consultation.status == 'started' else '0' }}"
+         data-status-url="{{ url_for('api.consultation_status', consultation_id=consultation.id, room_token=consultation.room_token) }}"
+         data-signals-url="{{ url_for('api.consultation_signals', consultation_id=consultation.id, room_token=consultation.room_token) }}"
+         {% if role == 'doctor' %}
+         data-start-url="{{ url_for('doctor.start_consultation', consultation_id=consultation.id) }}"
+         {% endif %}>
+  <div class="consult-room-header">
+    <div>
+      <p class="section-kicker">Invite-only live session</p>
+      <h1>{{ consultation.patient.full_name }} - {{ consultation.request.request_number }}</h1>
+      <p>
+        {% if consultation.scheduled_at %}
+          Scheduled {{ consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') }}
+        {% else %}
+          Secure consultation room
+        {% endif %}
+      </p>
+    </div>
+    <div class="consult-room-actions">
+      {% if role == 'doctor' and consultation.status != 'started' %}
+        <button type="button" class="btn-primary px-3 py-2 text-sm" data-consultation-start>Start session</button>
+      {% endif %}
+      {% if role == 'doctor' %}
+        <form method="post" action="{{ url_for('doctor.end_consultation', consultation_id=consultation.id) }}">
+          <button class="btn-secondary px-3 py-2 text-sm" type="submit">End</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="consult-video-grid">
+    <div class="consult-video-tile consult-video-remote">
+      <video data-consultation-remote autoplay playsinline></video>
+      <div class="consult-video-label">Remote participant</div>
+      <div class="consult-video-empty" data-consultation-remote-empty>
+        Waiting for the other participant to connect
+      </div>
+    </div>
+    <div class="consult-video-tile consult-video-local">
+      <video data-consultation-local autoplay playsinline muted></video>
+      <div class="consult-video-label">You</div>
+    </div>
+  </div>
+
+  <div class="consult-controls">
+    <button type="button" data-consultation-mic class="btn-secondary px-3 py-2 text-sm">Mute mic</button>
+    <button type="button" data-consultation-camera class="btn-secondary px-3 py-2 text-sm">Camera off</button>
+    <div class="consult-status" data-consultation-status>
+      {% if consultation.status == 'started' %}
+        Preparing secure video session...
+      {% else %}
+        Session has not started yet.
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

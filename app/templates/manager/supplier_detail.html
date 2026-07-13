@@ -1,0 +1,31 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}Supplier Details{% endblock %}
+
+{% block content %}
+
+<div class="max-w-4xl mx-auto">
+
+<div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-8">
+
+    <h2 class="text-3xl font-bold mb-6">
+        {{ supplier.name }}
+    </h2>
+
+    <div class="space-y-4">
+
+        <p><strong>Contact:</strong> {{ supplier.contact_name }}</p>
+
+        <p><strong>Email:</strong> {{ supplier.email }}</p>
+
+        <p><strong>Phone:</strong> {{ supplier.phone }}</p>
+
+        <p><strong>Address:</strong> {{ supplier.address }}</p>
+
+    </div>
+
+</div>
+
+</div>
+
+{% endblock %}

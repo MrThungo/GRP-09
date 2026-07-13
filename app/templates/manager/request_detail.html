@@ -1,0 +1,212 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+
+<div class="max-w-6xl mx-auto">
+
+    <!-- HEADER -->
+    <div class="mb-8 flex justify-between items-center">
+
+        <div>
+
+            <h1 class="text-4xl font-bold text-white">
+                Test Request Details
+            </h1>
+
+            <p class="text-slate-400 mt-2">
+                {{ req.request_number }}
+            </p>
+
+        </div>
+
+        <a href="{{ url_for('manager.requests_list') }}"
+           class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-white">
+
+            Back
+
+        </a>
+
+    </div>
+
+    <!-- REQUEST INFO -->
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+
+        <div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-6">
+
+            <h2 class="text-xl font-semibold text-cyan-400 mb-4">
+                Patient Information
+            </h2>
+
+            <div class="space-y-3 text-sm">
+
+                <p class="text-white">
+                    <span class="text-slate-400">Name:</span>
+                    {{ req.patient.full_name }}
+                </p>
+
+                <p class="text-white">
+                    <span class="text-slate-400">MRN:</span>
+                    {{ req.patient.mrn }}
+                </p>
+
+                <p class="text-white">
+                    <span class="text-slate-400">Phone:</span>
+                    {{ req.patient.phone or "N/A" }}
+                </p>
+
+                <p class="text-white">
+                    <span class="text-slate-400">Blood Type:</span>
+                    {{ req.patient.blood_type or "N/A" }}
+                </p>
+
+            </div>
+
+        </div>
+
+        <div class="bg-[#0B1120] border border-slate-800 rounded-2xl p-6">
+
+            <h2 class="text-xl font-semibold text-cyan-400 mb-4">
+                Request Information
+            </h2>
+
+            <div class="space-y-3 text-sm">
+
+                <p class="text-white">
+                    <span class="text-slate-400">Doctor:</span>
+                    {{ req.doctor.full_name if req.doctor else "Self Requested" }}
+                </p>
+
+                <p class="text-white">
+                    <span class="text-slate-400">Priority:</span>
+                    {{ req.priority }}
+                </p>
+
+                <p class="text-white">
+                    <span class="text-slate-400">Status:</span>
+                    {{ req.status }}
+                </p>
+
+                <p class="text-white">
+                    <span class="text-slate-400">Created:</span>
+                    {{ req.created_at.strftime('%Y-%m-%d %H:%M') }}
+                </p>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- TESTS -->
+    <div class="bg-[#0B1120] border border-slate-800 rounded-2xl overflow-hidden">
+
+        <div class="px-6 py-4 border-b border-slate-800">
+
+            <h2 class="text-2xl font-semibold text-white">
+                Requested Tests & Results
+            </h2>
+
+        </div>
+
+        <table class="w-full text-sm">
+
+            <thead class="bg-[#111827] text-slate-400 uppercase text-xs">
+
+                <tr>
+
+                    <th class="px-6 py-4 text-left">
+                        Test
+                    </th>
+
+                    <th class="px-6 py-4 text-left">
+                        Technician
+                    </th>
+
+                    <th class="px-6 py-4 text-left">
+                        Result
+                    </th>
+
+                    <th class="px-6 py-4 text-left">
+                        Status
+                    </th>
+
+                    <th class="px-6 py-4 text-left">
+                        Notes
+                    </th>
+
+                </tr>
+
+            </thead>
+
+            <tbody>
+
+                {% for item in req.items %}
+
+                <tr class="border-t border-slate-800 hover:bg-[#111827]">
+
+                    <td class="px-6 py-4 text-white">
+
+                        {{ item.test.name }}
+
+                    </td>
+
+                    <td class="px-6 py-4 text-cyan-400">
+
+                        {{ technician_names[item.id] }}
+
+                    </td>
+
+                    <td class="px-6 py-4 text-white">
+
+                        {% if item.result_value %}
+                            {{ item.result_value }}
+                            {{ item.test.units }}
+                        {% elif item.result_text %}
+                            {{ item.result_text }}
+                        {% else %}
+                            Pending
+                        {% endif %}
+
+                    </td>
+
+                    <td class="px-6 py-4">
+
+                        <span class="
+                            px-3 py-1 rounded-full text-xs font-medium
+
+                            {% if item.status == 'verified' %}
+                                bg-green-900/40 text-green-400
+
+                            {% elif item.status == 'completed' %}
+                                bg-blue-900/40 text-blue-400
+
+                            {% else %}
+                                bg-amber-900/40 text-amber-400
+                            {% endif %}
+                        ">
+
+                            {{ item.status }}
+
+                        </span>
+
+                    </td>
+
+                    <td class="px-6 py-4 text-slate-300">
+
+                        {{ item.result_notes or "-" }}
+
+                    </td>
+
+                </tr>
+
+                {% endfor %}
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+{% endblock %}

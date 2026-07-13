@@ -1,0 +1,283 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import stat_card %}
+
+{% block page_title %}Manager dashboard{% endblock %}
+{% block head_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+  <div>
+    <div class="section-kicker">Operations overview</div>
+    <h1 class="section-title mt-2 text-3xl">Laboratory Manager Dashboard</h1>
+    <p class="mt-2 text-sm text-slate-400">Monitor orders, stock, suppliers, technicians and active request flow.</p>
+  </div>
+  <a href="{{ url_for('manager.new_order') }}" class="btn-primary px-4 py-2 text-sm">New order</a>
+</div>
+
+<div class="mb-8 grid grid-cols-2 gap-4 md:grid-cols-5">
+  <a href="{{ url_for('manager.orders') }}">{{ stat_card("Total Orders", total_orders, "sky") }}</a>
+  <a href="{{ url_for('manager.inventory') }}">{{ stat_card("Low Stock", low_stock|length, "amber") }}</a>
+  <a href="{{ url_for('manager.doctors') }}">{{ stat_card("Doctors", doctor_count, "emerald") }}</a>
+  <a href="{{ url_for('manager.technicians') }}">{{ stat_card("Technicians", technician_count, "sky") }}</a>
+  <a href="{{ url_for('manager.suppliers') }}">{{ stat_card("Suppliers", supplier_count, "violet") }}</a>
+</div>
+
+<div class="mb-8 grid gap-6 xl:grid-cols-2">
+  <section class="surface-card p-5">
+    <div class="mb-4 flex items-start justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-bold text-white">Request Trend</h2>
+        <p class="text-sm text-slate-400">New requests received over the last 14 days.</p>
+      </div>
+      <a href="{{ url_for('manager.requests_list') }}" class="text-xs font-semibold text-sky-300 hover:text-sky-200">Requests</a>
+    </div>
+    <div class="chart-frame">
+      <canvas id="managerTrendChart" height="130"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <div class="mb-4 flex items-start justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-bold text-white">Workflow Status</h2>
+        <p class="text-sm text-slate-400">Current test request distribution.</p>
+      </div>
+      <a href="{{ url_for('manager.requests_list') }}" class="text-xs font-semibold text-sky-300 hover:text-sky-200">Open flow</a>
+    </div>
+    <div class="chart-frame">
+      <canvas id="managerStatusChart" height="130"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <div class="mb-4 flex items-start justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-bold text-white">Order Pipeline</h2>
+        <p class="text-sm text-slate-400">Consumable orders by fulfilment status.</p>
+      </div>
+      <a href="{{ url_for('manager.orders') }}" class="text-xs font-semibold text-sky-300 hover:text-sky-200">Orders</a>
+    </div>
+    <div class="chart-frame">
+      <canvas id="managerOrderChart" height="130"></canvas>
+    </div>
+  </section>
+
+  <section class="surface-card p-5">
+    <div class="mb-4 flex items-start justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-bold text-white">Stock Risk</h2>
+        <p class="text-sm text-slate-400">On-hand stock compared with reorder levels.</p>
+      </div>
+      <a href="{{ url_for('manager.inventory') }}" class="text-xs font-semibold text-sky-300 hover:text-sky-200">Inventory</a>
+    </div>
+    <div class="chart-frame">
+      <canvas id="managerStockChart" height="130"></canvas>
+    </div>
+  </section>
+</div>
+
+<section class="surface-card mb-8 p-5">
+  <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h2 class="text-xl font-bold text-white">Test Request Overview</h2>
+      <p class="text-sm text-slate-400">Laboratory workflow tracking by status.</p>
+    </div>
+    <a href="{{ url_for('manager.requests_list') }}" class="text-sm font-semibold text-sky-300 hover:text-sky-200">View all requests</a>
+  </div>
+
+  <div class="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+    {% for k, v in by_status.items() %}
+      <a href="{{ url_for('manager.requests_list') }}" class="rounded-xl border border-slate-800 bg-slate-950/50 p-4 hover:border-sky-400/40 hover:bg-slate-900/80">
+        <div class="text-xs font-bold uppercase tracking-wide text-slate-400">{{ k.replace('_', ' ') }}</div>
+        <div class="mt-2 text-3xl font-black text-white">{{ v }}</div>
+      </a>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="grid gap-6 xl:grid-cols-2">
+  <section class="table-card">
+    <div class="flex items-center justify-between gap-4 border-b border-slate-800 px-5 py-4">
+      <div>
+        <h2 class="text-lg font-bold text-white">Low Stock Alerts</h2>
+        <p class="text-sm text-slate-400">Consumables requiring replenishment.</p>
+      </div>
+      <a href="{{ url_for('manager.inventory') }}" class="text-sm font-semibold text-sky-300 hover:text-sky-200">Inventory</a>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[620px] text-sm">
+        <thead class="text-left">
+          <tr>
+            <th class="px-5">Item</th>
+            <th>Stock</th>
+            <th>Reorder</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in low_stock[:5] %}
+            <tr class="border-t border-slate-800">
+              <td class="px-5 font-semibold text-white">{{ c.name }}</td>
+              <td class="font-bold text-amber-300">{{ c.current_stock }}</td>
+              <td class="text-slate-300">{{ c.reorder_level }}</td>
+              <td>
+                <a href="{{ url_for('manager.new_order', consumable_id=c.id) }}" class="btn-secondary px-3 py-1.5 text-xs">Place order</a>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="4" class="px-5 py-10 text-center text-slate-500">No low stock items.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="table-card">
+    <div class="flex items-center justify-between gap-4 border-b border-slate-800 px-5 py-4">
+      <div>
+        <h2 class="text-lg font-bold text-white">Recent Orders</h2>
+        <p class="text-sm text-slate-400">Latest consumable purchase orders.</p>
+      </div>
+      <a href="{{ url_for('manager.orders') }}" class="text-sm font-semibold text-sky-300 hover:text-sky-200">Orders</a>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[520px] text-sm">
+        <thead class="text-left">
+          <tr>
+            <th class="px-5">Order #</th>
+            <th>Status</th>
+            <th>Quantity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in recent_orders %}
+            <tr class="border-t border-slate-800">
+              <td class="px-5 font-semibold text-sky-300">{{ o.order_number }}</td>
+              <td>
+                <span class="status-badge
+                  {% if o.status == 'complete' %}bg-emerald-950/70 text-emerald-200
+                  {% elif o.status == 'partially_complete' %}bg-amber-950/70 text-amber-200
+                  {% elif o.status == 'cancelled' %}bg-rose-950/70 text-rose-200
+                  {% else %}bg-sky-950/70 text-sky-200{% endif %}">
+                  {{ o.status.replace('_', ' ') }}
+                </span>
+              </td>
+              <td class="font-semibold text-white">{{ o.total_quantity }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="3" class="px-5 py-10 text-center text-slate-500">No recent orders available.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+<script>
+  (function () {
+    const C = window.Chart;
+    if (!C) return;
+
+    C.defaults.color = '#cbd5e1';
+    C.defaults.borderColor = 'rgba(148,163,184,0.15)';
+    const palette = ['#38bdf8', '#f59e0b', '#14b8a6', '#6366f1', '#22c55e', '#a855f7', '#ef4444'];
+
+    new C(document.getElementById('managerTrendChart'), {
+      type: 'line',
+      data: {
+        labels: {{ trend_chart_labels|tojson }},
+        datasets: [{
+          label: 'Requests',
+          data: {{ trend_chart_values|tojson }},
+          borderColor: '#38bdf8',
+          backgroundColor: 'rgba(56,189,248,0.18)',
+          fill: true,
+          tension: 0.35,
+          pointBackgroundColor: '#bae6fd',
+          pointRadius: 3
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    });
+
+    new C(document.getElementById('managerStatusChart'), {
+      type: 'doughnut',
+      data: {
+        labels: {{ status_chart_labels|tojson }},
+        datasets: [{
+          data: {{ status_chart_values|tojson }},
+          backgroundColor: palette,
+          borderWidth: 0,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        cutout: '62%',
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } }
+      }
+    });
+
+    new C(document.getElementById('managerOrderChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ order_chart_labels|tojson }},
+        datasets: [{
+          label: 'Orders',
+          data: {{ order_chart_values|tojson }},
+          backgroundColor: ['#38bdf8', '#f59e0b', '#22c55e', '#ef4444'],
+          borderRadius: 8
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
+    });
+
+    new C(document.getElementById('managerStockChart'), {
+      type: 'bar',
+      data: {
+        labels: {{ stock_chart_labels|tojson }},
+        datasets: [
+          {
+            label: 'On hand',
+            data: {{ stock_chart_current|tojson }},
+            backgroundColor: '#f43f5e',
+            borderRadius: 6
+          },
+          {
+            label: 'Reorder level',
+            data: {{ stock_chart_reorder|tojson }},
+            backgroundColor: 'rgba(56,189,248,0.65)',
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } },
+        scales: {
+          x: { beginAtZero: true, ticks: { precision: 0 } },
+          y: { grid: { display: false } }
+        }
+      }
+    });
+  })();
+</script>
+{% endblock %}

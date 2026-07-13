@@ -1,0 +1,98 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Verify completed results{% endblock %}
+{% block content %}
+<form method="get" class="mb-5 flex flex-wrap items-end gap-3 rounded-lg border border-slate-800 bg-slate-950 p-4">
+  <div>
+    <label class="mb-1 block text-xs text-slate-400">Search</label>
+    <input name="q"
+           value="{{ filters.q if filters else '' }}"
+           placeholder="Request, code or test"
+           class="w-56 px-3 py-2 bg-slate-900 border border-slate-700 rounded text-sm">
+  </div>
+  <div>
+    <label class="mb-1 block text-xs text-slate-400">Priority</label>
+    <select name="priority" class="px-3 py-2 bg-slate-900 border border-slate-700 rounded text-sm">
+      <option value="">All priorities</option>
+      {% for priority in priorities %}
+      <option value="{{ priority }}" {% if filters and filters.priority == priority %}selected{% endif %}>{{ priority|upper }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="mb-1 block text-xs text-slate-400">Flag</label>
+    <select name="flag" class="px-3 py-2 bg-slate-900 border border-slate-700 rounded text-sm">
+      <option value="">Any flag</option>
+      <option value="abnormal" {% if filters and filters.flag == 'abnormal' %}selected{% endif %}>Any abnormal</option>
+      <option value="low" {% if filters and filters.flag == 'low' %}selected{% endif %}>Low</option>
+      <option value="high" {% if filters and filters.flag == 'high' %}selected{% endif %}>High</option>
+      <option value="normal" {% if filters and filters.flag == 'normal' %}selected{% endif %}>Normal</option>
+    </select>
+  </div>
+  <button class="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm">Filter</button>
+  <a href="{{ url_for('technician.verify_list') }}" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm">Clear</a>
+  <div class="ml-auto text-xs text-slate-400">{{ items|length }} result(s)</div>
+</form>
+
+<div class="space-y-4">
+  {% for item in items %}
+  <div data-result-card class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+    <div class="flex flex-wrap justify-between gap-3">
+      <div>
+        <div class="font-medium">{{ item.request.request_number }} - {{ item.test.code }} {{ item.test.name }}</div>
+        <div class="text-xs text-slate-400 mt-1">
+          {{ item.request.patient.full_name }} | {{ item.request.priority|upper }} |
+          Completed {{ item.completed_at.strftime('%Y-%m-%d %H:%M') if item.completed_at else '-' }}
+        </div>
+      </div>
+      {% if item.abnormal_flag %}
+      <span class="px-2 py-1 rounded bg-rose-900/40 text-rose-300 text-xs h-fit">
+        {{ item.abnormal_flag|upper }}
+      </span>
+      {% endif %}
+    </div>
+    <details data-result-review class="mt-4 rounded-lg border border-slate-800 bg-slate-900/50">
+      <summary class="cursor-pointer px-3 py-2 text-sm font-semibold text-sky-300">
+        View result details before rejecting
+      </summary>
+      <div class="grid gap-3 border-t border-slate-800 p-3 text-sm md:grid-cols-3">
+        <div>
+          <span class="text-slate-400">Result:</span>
+          {{ item.result_value if item.result_value is not none else (item.result_text or '-') }} {{ item.test.units or '' }}
+        </div>
+        <div>
+          <span class="text-slate-400">Reference:</span>
+          {% if item.test.reference_low is not none and item.test.reference_high is not none %}
+            {{ item.test.reference_low }} - {{ item.test.reference_high }} {{ item.test.units or '' }}
+          {% else %}
+            {{ item.test.reference_text or '-' }}
+          {% endif %}
+        </div>
+        <div><span class="text-slate-400">Notes:</span> {{ item.result_notes or '-' }}</div>
+      </div>
+    </details>
+
+    <form method="post"
+          action="{{ url_for('technician.verify_result', item_id=item.id) }}"
+          class="mt-4 flex flex-wrap gap-2"
+          data-result-review-form>
+      <input type="hidden" name="viewed_result" value="0" data-viewed-result-input>
+      <input name="note" placeholder="Verification or return note"
+             class="flex-1 min-w-64 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+      <button name="action" value="verify"
+              class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm">Verify</button>
+      <button name="action" value="return"
+              data-return-result-button
+              disabled
+              title="View result details before rejecting"
+              class="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded text-sm disabled:cursor-not-allowed disabled:opacity-50">
+        Reject result
+      </button>
+    </form>
+  </div>
+  {% else %}
+  <div class="bg-slate-950 border border-slate-800 rounded-lg p-6 text-slate-500">
+    Nothing eligible for verification.
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

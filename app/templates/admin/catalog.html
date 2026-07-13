@@ -1,0 +1,53 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}{{ label }} Catalog{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+  <h2 class="text-lg font-semibold">{{ label }} list</h2>
+  <div class="flex gap-2 text-xs">
+    <a href="{{ url_for('admin.catalog_list', kind='conditions')  }}" class="px-3 py-1 rounded border border-slate-700 {% if kind=='conditions'  %}bg-sky-900/40 text-sky-200{% endif %}">Conditions</a>
+    <a href="{{ url_for('admin.catalog_list', kind='allergies')   }}" class="px-3 py-1 rounded border border-slate-700 {% if kind=='allergies'   %}bg-sky-900/40 text-sky-200{% endif %}">Allergies</a>
+    <a href="{{ url_for('admin.catalog_list', kind='medications') }}" class="px-3 py-1 rounded border border-slate-700 {% if kind=='medications' %}bg-sky-900/40 text-sky-200{% endif %}">Medications</a>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('admin.catalog_new', kind=kind) }}"
+      class="grid grid-cols-1 md:grid-cols-4 gap-2 bg-slate-950 border border-slate-800 rounded-lg p-4 mb-4">
+  <input name="name" required placeholder="Name" class="px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+  <input name="category" list="cats-{{ kind }}" placeholder="Category" class="px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+  <datalist id="cats-{{ kind }}">
+    {% for c in categories %}<option value="{{ c }}">{% endfor %}
+  </datalist>
+  <input name="description" placeholder="Description (optional)" class="md:col-span-1 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+  <button class="py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm font-medium">Add {{ label }}</button>
+</form>
+
+<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-900 text-slate-400 text-xs">
+      <tr><th class="text-left px-3 py-2">Name</th><th class="text-left px-3 py-2">Category</th>
+          <th class="text-left px-3 py-2">Description</th><th class="text-left px-3 py-2">Active</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="border-t border-slate-900">
+        <td class="px-3 py-2">{{ r.name }}</td>
+        <td class="px-3 py-2 text-slate-400">{{ r.category }}</td>
+        <td class="px-3 py-2 text-slate-400">{{ r.description or '-' }}</td>
+        <td class="px-3 py-2">{{ 'Yes' if r.active else 'No' }}</td>
+        <td class="px-3 py-2 text-right">
+          <form method="post" action="{{ url_for('admin.catalog_toggle', kind=kind, rid=r.id) }}" class="inline">
+            <button class="text-xs text-slate-300 hover:text-white">{{ 'Disable' if r.active else 'Enable' }}</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.catalog_delete', kind=kind, rid=r.id) }}" class="inline ml-2"
+                data-confirm-message="Delete this {{ label.lower()|e }}?">
+            <button class="text-xs text-red-400 hover:text-red-200">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">No entries yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

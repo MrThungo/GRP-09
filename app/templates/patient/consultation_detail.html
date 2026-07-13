@@ -1,0 +1,94 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Consultation{% endblock %}
+{% block content %}
+{% set labels = {
+  'offered': 'Choose consultation type',
+  'online_requested': 'Online requested',
+  'in_person_requested': 'In-person requested',
+  'invited': 'Respond to invite',
+  'accepted': 'Accepted',
+  'declined': 'Declined',
+  'started': 'Live now',
+  'completed': 'Completed',
+  'cancelled': 'Cancelled'
+} %}
+
+<div class="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
+  <section class="surface-card p-5">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="rounded bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200">
+        {{ labels.get(consultation.status, consultation.status.replace('_', ' ')|title) }}
+      </span>
+      {% if consultation.patient_preference %}
+        <span class="rounded bg-sky-950 px-2 py-1 text-xs font-bold text-sky-200">
+          {{ consultation.patient_preference.replace('_', ' ')|title }}
+        </span>
+      {% endif %}
+    </div>
+    <h1 class="mt-4 text-2xl font-black text-white">Discuss {{ consultation.request.request_number }}</h1>
+    <p class="mt-2 text-sm text-slate-400">
+      Doctor: {{ consultation.doctor.full_name or consultation.doctor.email }}
+    </p>
+    {% if consultation.scheduled_at %}
+      <div class="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-4">
+        <div class="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Meeting time</div>
+        <div class="mt-1 text-lg font-bold text-white">{{ consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        {% if consultation.scheduled_end_at %}
+          <div class="text-sm text-slate-400">Ends around {{ consultation.scheduled_end_at.strftime('%H:%M') }}</div>
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if consultation.invite_message %}
+      <div class="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-300">
+        {{ consultation.invite_message }}
+      </div>
+    {% endif %}
+  </section>
+
+  <aside class="surface-card p-5">
+    {% if consultation.status == 'offered' %}
+      <h2 class="text-lg font-bold text-white">How would you like to talk?</h2>
+      <p class="mt-1 text-sm text-slate-400">Your doctor will be notified of your choice.</p>
+      <div class="mt-4 grid gap-3">
+        <form method="post" action="{{ url_for('patient.request_online_consultation', consultation_id=consultation.id) }}">
+          <button class="btn-primary w-full px-4 py-3 text-sm" type="submit">Request online consultation</button>
+        </form>
+        <form method="post" action="{{ url_for('patient.request_in_person_consultation', consultation_id=consultation.id) }}">
+          <button class="btn-secondary w-full px-4 py-3 text-sm" type="submit">Prefer in-person discussion</button>
+        </form>
+      </div>
+    {% elif consultation.status == 'online_requested' %}
+      <h2 class="text-lg font-bold text-white">Online request sent</h2>
+      <p class="mt-2 text-sm text-slate-400">Your doctor will set a private meeting time and send an invite here.</p>
+    {% elif consultation.status == 'in_person_requested' %}
+      <h2 class="text-lg font-bold text-white">In-person preference sent</h2>
+      <p class="mt-2 text-sm text-slate-400">Your doctor has been told that you prefer to discuss these results in person.</p>
+    {% elif consultation.status == 'invited' %}
+      <h2 class="text-lg font-bold text-white">Respond to meeting invite</h2>
+      <p class="mt-2 text-sm text-slate-400">Accept to unlock the waiting room. Decline if the time does not work.</p>
+      <form method="post" action="{{ url_for('patient.respond_to_consultation', consultation_id=consultation.id) }}" class="mt-4 space-y-3">
+        <button class="btn-primary w-full px-4 py-3 text-sm" name="response" value="accepted" type="submit">Accept time</button>
+        <textarea name="decline_reason" rows="2" placeholder="Optional reason if declining"
+                  class="w-full px-3 py-2 text-sm"></textarea>
+        <button class="btn-secondary w-full px-4 py-3 text-sm" name="response" value="declined" type="submit">Decline time</button>
+      </form>
+    {% elif consultation.status == 'accepted' %}
+      <h2 class="text-lg font-bold text-white">Meeting accepted</h2>
+      <p class="mt-2 text-sm text-slate-400">You can enter the calm waiting room. The call starts automatically after your doctor opens the session.</p>
+      <a class="btn-primary mt-4 inline-flex w-full justify-center px-4 py-3 text-sm"
+         href="{{ url_for('patient.consultation_waiting', consultation_id=consultation.id, room_token=consultation.room_token) }}">Enter waiting room</a>
+    {% elif consultation.status == 'started' %}
+      <h2 class="text-lg font-bold text-white">Session is live</h2>
+      <p class="mt-2 text-sm text-slate-400">Your doctor has opened the secure online room.</p>
+      <a class="btn-primary mt-4 inline-flex w-full justify-center px-4 py-3 text-sm"
+         href="{{ url_for('patient.consultation_room', consultation_id=consultation.id, room_token=consultation.room_token) }}">Join session</a>
+    {% elif consultation.status == 'declined' %}
+      <h2 class="text-lg font-bold text-white">Invite declined</h2>
+      <p class="mt-2 text-sm text-slate-400">Your doctor can send another online invite if needed.</p>
+    {% else %}
+      <h2 class="text-lg font-bold text-white">{{ labels.get(consultation.status, consultation.status.replace('_', ' ')|title) }}</h2>
+      <p class="mt-2 text-sm text-slate-400">No action is required right now.</p>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

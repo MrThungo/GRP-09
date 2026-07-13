@@ -1,0 +1,221 @@
+{% extends "layouts/base.html" %}
+{% from "_macros.html" import status_badge %}
+{% block page_title %}{{ req.request_number }}{% endblock %}
+{% block content %}
+{% if shared_via %}
+<div class="mb-4 px-4 py-2 rounded bg-amber-900/30 border border-amber-700 text-amber-200 text-sm">
+  Shared with you by {{ req.patient.full_name }} on {{ shared_via.granted_at.strftime('%Y-%m-%d %H:%M') }}.
+  Showing {{ items|length }} selected test(s) in read-only mode.
+</div>
+{% endif %}
+
+<div class="grid md:grid-cols-2 gap-4 mb-6">
+  <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+    <div class="text-xs text-slate-400 uppercase">Patient</div>
+    <div class="font-medium">{{ req.patient.full_name }}</div>
+    <div class="text-xs text-slate-400">MRN: {{ req.patient.mrn }}</div>
+  </div>
+  <div class="bg-slate-950 border border-slate-800 rounded-lg p-4">
+    <div class="text-xs text-slate-400 uppercase">Status</div>
+    <div class="mt-1">
+      {{ status_badge(req.status) }}
+      <span class="text-xs text-slate-400 ml-2">priority: {{ req.priority }}</span>
+    </div>
+    {% if not shared_via and req.status == 'completed' and req.all_verified %}
+      <form method="post" action="{{ url_for('doctor.request_release', request_id=req.id) }}" class="mt-3">
+        <textarea name="release_note" rows="2"
+                  placeholder="Optional note to patient"
+                  class="w-full mb-2 px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm"></textarea>
+        <button class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm">Release to patient</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if not shared_via and req.status == 'released' %}
+{% set consultation_labels = {
+  'offered': 'Awaiting patient choice',
+  'online_requested': 'Patient requested online',
+  'in_person_requested': 'Patient prefers in person',
+  'invited': 'Invite sent',
+  'accepted': 'Accepted',
+  'declined': 'Declined',
+  'started': 'Live session open',
+  'completed': 'Completed',
+  'cancelled': 'Cancelled'
+} %}
+<div class="mb-6 rounded-lg border border-sky-900/70 bg-sky-950/20 p-4">
+  <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+    <div>
+      <div class="text-xs font-bold uppercase tracking-[0.16em] text-sky-300">Discuss released results</div>
+      <h2 class="mt-1 text-lg font-bold text-white">Consultation choice</h2>
+      <p class="mt-1 text-sm text-slate-300">
+        Ask the patient whether they want to come in or use an invite-only online consultation.
+      </p>
+      {% if consultation %}
+        <p class="mt-2 text-sm text-slate-400">
+          Status:
+          <span class="font-semibold text-sky-200">{{ consultation_labels.get(consultation.status, consultation.status.replace('_', ' ')|title) }}</span>
+          {% if consultation.scheduled_at %}
+            <span class="ml-2">Meeting: {{ consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</span>
+          {% endif %}
+        </p>
+      {% endif %}
+    </div>
+    <div class="flex flex-wrap gap-2">
+      {% if consultation %}
+        <a href="{{ url_for('doctor.consultations') }}" class="btn-secondary px-3 py-2 text-sm">Manage consultation</a>
+        {% if consultation.status == 'started' %}
+          <a href="{{ url_for('doctor.consultation_room', consultation_id=consultation.id, room_token=consultation.room_token) }}"
+             class="btn-primary px-3 py-2 text-sm">Join live session</a>
+        {% endif %}
+      {% else %}
+        <form method="post" action="{{ url_for('doctor.offer_consultation', request_id=req.id) }}">
+          <button class="btn-primary px-3 py-2 text-sm" type="submit">Ask patient</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if req.clinical_notes %}
+<div class="mb-4 bg-slate-950 border border-slate-800 rounded-lg p-4">
+  <div class="text-xs text-slate-400 uppercase mb-1">Clinical notes</div>
+  <div class="whitespace-pre-wrap">{{ req.clinical_notes }}</div>
+</div>
+{% endif %}
+
+<div class="space-y-4">
+  <div class="bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 font-medium">Items</div>
+  {% for item in items %}
+  <div id="result-{{ item.id }}"
+       class="border rounded-lg p-4 {% if item.abnormal_flag %}border-red-500 bg-red-950/20{% else %}border-slate-800 bg-slate-950{% endif %}">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h3 class="font-semibold">{{ item.test.name }}</h3>
+        <p class="text-xs text-slate-400">{{ item.test.code }}</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        {{ status_badge(item.status) }}
+        {% if item.abnormal_flag %}
+        <span class="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs font-medium">
+          Abnormal - {{ item.abnormal_flag|upper }}
+        </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      <div>
+        <label class="text-xs text-slate-400">Result</label>
+        <div class="text-lg font-mono {% if item.abnormal_flag %}text-red-400 font-bold{% endif %}">
+          {{ item.result_value if item.result_value is not none else (item.result_text or '-') }}
+          {% if item.test.units %}{{ item.test.units }}{% endif %}
+        </div>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400">Reference range</label>
+        <div class="text-sm">
+          {% if item.test.reference_low and item.test.reference_high %}
+            {{ item.test.reference_low }} - {{ item.test.reference_high }} {{ item.test.units or '' }}
+          {% elif item.test.reference_text %}
+            {{ item.test.reference_text }}
+          {% else %}
+            -
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if item.result_notes %}
+    <div class="mt-3 text-sm text-slate-300">
+      <label class="text-xs text-slate-400">Notes:</label>
+      <p>{{ item.result_notes }}</p>
+    </div>
+    {% endif %}
+
+    {% if item.review_notes %}
+    <div class="mt-3 rounded border border-amber-800 bg-amber-950/30 p-3 text-sm text-amber-100">
+      <span class="font-semibold text-amber-200">Return note:</span> {{ item.review_notes }}
+    </div>
+    {% endif %}
+
+    {% if item.review_history %}
+    <div class="mt-3 border-t border-slate-800 pt-3">
+      <label class="text-xs text-slate-400">Verification history</label>
+      {% for review in item.review_history|sort(attribute='created_at') %}
+      <p class="text-xs text-slate-300 mt-1">
+        {{ review.created_at.strftime('%Y-%m-%d %H:%M') }} -
+        {{ review.action.replace('_', ' ')|title }}
+        {% if review.note %}: {{ review.note }}{% endif %}
+      </p>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Individual Item Cancellation (Shown when there are multiple tests) #}
+    {% if not shared_via and items|length > 1 and req.status in ['submitted','samples_received'] and item.status not in ['cancelled', 'verified', 'completed'] %}
+    <form method="post"
+          action="{{ url_for('doctor.cancel_item', request_id=req.id, item_id=item.id) }}"
+          class="mt-4 rounded border border-rose-900 bg-slate-900/50 p-3">
+      <label class="text-xs font-semibold uppercase text-rose-200" for="cancel_reason_{{ item.id }}">
+        Cancel this test item
+      </label>
+      <textarea id="cancel_reason_{{ item.id }}"
+                name="reason"
+                rows="2"
+                required
+                placeholder="Reason for cancelling this test"
+                class="mt-2 w-full text-slate-200 px-3 py-2 bg-slate-950 border border-slate-800 rounded text-sm"></textarea>
+      <div class="mt-2 flex justify-end">
+        <button class="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded text-sm text-white">
+          Cancel Test
+        </button>
+      </div>
+    </form>
+    {% endif %}
+
+    {% if not shared_via and req.doctor_id == current_user.id and item.status == 'verified' and req.status not in ['released', 'cancelled'] %}
+    <form method="post"
+          action="{{ url_for('doctor.send_result_back', request_id=req.id, item_id=item.id) }}"
+          class="mt-4 rounded border border-amber-900 bg-slate-900/50 p-3">
+      <label class="text-xs font-semibold uppercase text-amber-200" for="send_back_note_{{ item.id }}">
+        Send back to technician
+      </label>
+      <textarea id="send_back_note_{{ item.id }}"
+                name="note"
+                rows="2"
+                required
+                minlength="3"
+                placeholder="Explain why you disagree with this result"
+                class="mt-2 w-full rounded border border-slate-700 bg-slate-950 px-3 py-2 text-sm"></textarea>
+      <div class="mt-2 flex justify-end">
+        <button class="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded text-sm">
+          Send back
+        </button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="rounded-lg border border-slate-800 bg-slate-950 py-8 text-center text-sm text-slate-500">
+    No test items found.
+  </div>
+  {% endfor %}
+</div>
+
+{# Global Cancellation Form (Only displays if there is only 1 test item left) #}
+{% if not shared_via and items|length == 1 and req.status in ['submitted','samples_received'] %}
+<form method="post"
+      action="{{ url_for('doctor.cancel_request', request_id=req.id) }}"
+      class="mt-4 rounded-lg border border-rose-900 bg-slate-950 p-4">
+  <p class="text-sm font-medium">Cancellation reason</p>
+  <textarea name="reason"
+            required
+            placeholder="Cancellation reason"
+            class="mt-2 w-full text-slate-400 px-3 py-2 bg-slate-950 border border-slate-800 rounded"></textarea>
+  <button class="mt-2 px-3 py-2 bg-red-600 rounded text-white">Cancel Request</button>
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Patients{% endblock %}
+{% block content %}
+<form method="get" class="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-800 bg-slate-950 p-4">
+  <div class="min-w-72 flex-1">
+    <label class="text-xs text-slate-400">Search patients</label>
+    <input name="q"
+           value="{{ q or '' }}"
+           placeholder="Name, MRN, email, phone or ID number"
+           class="mt-1 w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
+  </div>
+  <button class="px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded text-sm">Search</button>
+  {% if q %}
+  <a href="{{ url_for('doctor.patients') }}" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-sm">Clear</a>
+  {% endif %}
+  <div class="text-xs text-slate-400">{{ patients|length }} patient(s)</div>
+</form>
+
+<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="text-left text-slate-400 text-xs uppercase">
+      <tr>
+        <th class="px-4 py-2">MRN</th><th>Name</th><th>ID number</th><th>DOB</th><th>Phone</th><th>Address</th>
+        <th>Conditions</th><th>Allergies</th><th>Medication</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in patients %}
+      {% set patient_id_number = p.id_number or (p.profile.sa_id_number if p.profile else '') %}
+      <tr class="border-t border-slate-800">
+        <td class="px-4 py-2">{{ p.mrn }}</td><td>{{ p.full_name }}</td>
+        <td>{{ patient_id_number or '-' }}</td>
+        <td>{{ p.date_of_birth or '' }}</td><td>{{ p.phone or '' }}</td><td>{{ p.address or '' }}</td>
+        <td>
+          {{ p.conditions|map(attribute='name')|join(', ') }}
+          {% if p.chronic_conditions %}{% if p.conditions %}, {% endif %}{{ p.chronic_conditions }}{% endif %}
+        </td>
+        <td>
+          {{ p.allergy_list|map(attribute='name')|join(', ') }}
+          {% if p.allergies %}{% if p.allergy_list %}, {% endif %}{{ p.allergies }}{% endif %}
+        </td>
+        <td>
+          {{ p.medications|map(attribute='name')|join(', ') }}
+          {% if p.current_medication %}{% if p.medications %}, {% endif %}{{ p.current_medication }}{% endif %}
+        </td>
+      </tr>
+      {% else %}<tr><td class="px-4 py-6 text-slate-500" colspan="8">No patients found.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
