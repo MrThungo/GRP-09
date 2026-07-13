@@ -95,6 +95,12 @@
               <button class="btn-secondary px-3 py-2 text-sm" type="submit">End session</button>
             </form>
           </div>
+        {% elif c.status == 'completed' and c.session_record_body %}
+          <div class="flex flex-wrap items-center gap-2">
+            <a class="btn-secondary px-3 py-2 text-sm"
+               href="{{ url_for('doctor.consultation_record', consultation_id=c.id) }}">Download record</a>
+            <span class="text-xs text-slate-500">{{ c.session_record_size or 0 }} bytes, under 1 MB</span>
+          </div>
         {% elif c.status == 'in_person_requested' %}
           <div class="rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">
             The patient requested an in-person discussion. Use Messages or your normal scheduling process to confirm the visit.

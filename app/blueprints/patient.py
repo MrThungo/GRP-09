@@ -316,6 +316,22 @@ def consultation_room(consultation_id, room_token):
     return render_template("consultations/room.html", consultation=consultation, role="patient")
 
 
+@bp.route("/consultations/<consultation_id>/record")
+def consultation_record(consultation_id):
+    consultation = _patient_consultation_or_404(consultation_id)
+    if not consultation.session_record_body:
+        flash("No consultation record is available yet.", "error")
+        return redirect(url_for("patient.consultation_detail", consultation_id=consultation.id))
+    return Response(
+        consultation.session_record_body,
+        mimetype=consultation.session_record_mime or "text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename={consultation.session_record_filename or 'consultation-record.txt'}",
+            "Content-Length": str(consultation.session_record_size or len(consultation.session_record_body.encode("utf-8"))),
+        },
+    )
+
+
 @bp.route("/requests")
 def requests_list():
     p = _my_patient()
@@ -528,19 +544,15 @@ def deactivate():
     """Soft-delete: user marks their own account inactive. An admin must reactivate it."""
     from datetime import datetime
     from flask_login import logout_user
-    from ..remember_me import clear_remember_me_cookie, revoke_all_remember_me_tokens
     confirm = (request.form.get("confirm") or "").strip().lower()
     if confirm != "deactivate":
         flash("Type 'deactivate' to confirm.", "error")
         return redirect(url_for("patient.profile"))
-    user_id = current_user.id
     current_user.is_deactivated = True
     current_user.deactivated_at = datetime.now()
     log_audit(current_user.id, "self_deactivate", "user", current_user.id)
     db.session.commit()
-    revoke_all_remember_me_tokens(user_id)
     response = redirect(url_for("public.landing"))
-    clear_remember_me_cookie(response)
     logout_user()
     flash("Your account has been deactivated. Contact an administrator to reactivate it.", "success")
     return response

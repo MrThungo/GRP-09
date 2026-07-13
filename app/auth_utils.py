@@ -27,9 +27,6 @@ def role_required(*roles):
                 abort(401)
             if getattr(current_user, "is_blocked", False):
                 from flask_login import logout_user
-                from .remember_me import mark_remember_me_cookie_for_clear, revoke_all_remember_me_tokens
-                revoke_all_remember_me_tokens(current_user.id)
-                mark_remember_me_cookie_for_clear()
                 logout_user()
                 return redirect(url_for("auth.login"))
             if current_user.is_pending:

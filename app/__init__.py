@@ -127,6 +127,12 @@ def _ensure_columns(app):
             ("cancelled_by", "cancelled_by VARCHAR(36)"),
             ("cancelled_at", "cancelled_at DATETIME"),
         ])
+        ensure("online_consultations", [
+            ("session_record_filename", "session_record_filename VARCHAR(255)"),
+            ("session_record_mime", "session_record_mime VARCHAR(80)"),
+            ("session_record_size", "session_record_size INTEGER"),
+            ("session_record_body", "session_record_body TEXT"),
+        ])
         ensure("test_request_items", [
             ("assigned_to", "assigned_to VARCHAR(36)"),
             ("started_at", "started_at DATETIME"),
@@ -199,6 +205,10 @@ def _ensure_indexes(app):
             ("access_requests", "idx_access_doctor_status_created", "doctor_id, status, created_at"),
             ("technician_tests", "idx_technician_tests_technician_test", "technician_id, test_id"),
             ("technician_tests", "idx_technician_tests_test", "test_id"),
+            ("online_consultations", "idx_online_consults_doctor_status", "doctor_id, status, scheduled_at"),
+            ("online_consultations", "idx_online_consults_patient_status", "patient_id, status, scheduled_at"),
+            ("online_consultations", "idx_online_consults_request_created", "request_id, created_at"),
+            ("consultation_signals", "idx_consult_signals_room_created", "consultation_id, created_at"),
             ("consumables", "idx_consumables_stock", "deleted_at, current_stock, reorder_level"),
         ]:
             ensure(table, name, columns)
@@ -217,6 +227,7 @@ def _static_asset_version(app):
     candidates = [
         os.path.join(app.static_folder, "css", "app.css"),
         os.path.join(app.static_folder, "js", "app.js"),
+        os.path.join(app.static_folder, "js", "consultation.js"),
     ]
     try:
         return str(max(int(os.path.getmtime(path)) for path in candidates if os.path.exists(path)))

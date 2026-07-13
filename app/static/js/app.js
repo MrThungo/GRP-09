@@ -552,6 +552,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
 (function () {
   const root = document.querySelector("[data-floating-chatbot]");
   if (!root) return;
+  document.body?.classList.add("has-floating-chatbot");
 
   const toggle = root.querySelector("[data-floating-chatbot-toggle]");
   const closeButton = root.querySelector("[data-floating-chatbot-close]");
@@ -1211,6 +1212,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   [80, 350, 900].forEach(delay => window.setTimeout(normalizeCharts, delay));
 
   if ("MutationObserver" in window) {
+    let normalizeTimer;
     new MutationObserver(records => {
       let shouldNormalize = false;
       records.forEach(record => {
@@ -1221,8 +1223,10 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
           }
         });
       });
-      if (shouldNormalize) normalizeCharts();
-    }).observe(document.documentElement, { childList: true, subtree: true });
+      if (!shouldNormalize) return;
+      window.clearTimeout(normalizeTimer);
+      normalizeTimer = window.setTimeout(normalizeCharts, 80);
+    }).observe(document.body || document.documentElement, { childList: true, subtree: true });
   }
 
   window.normalizeResponsiveCharts = normalizeCharts;
@@ -1434,7 +1438,13 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     paginatedTables.forEach(state => state.refresh(options));
   };
 
-  document.querySelectorAll("main table").forEach(initTablePagination);
+  const schedulePagination = window.requestIdleCallback
+    ? callback => window.requestIdleCallback(callback, { timeout: 700 })
+    : callback => window.setTimeout(callback, 0);
+
+  schedulePagination(() => {
+    document.querySelectorAll("main table").forEach(initTablePagination);
+  });
 })();
 
 // --- Capture form: live abnormal-flag preview ---

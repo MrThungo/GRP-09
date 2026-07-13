@@ -2,7 +2,7 @@ import secrets  # <-- Added secrets import here
 import os
 import uuid
 from datetime import date, datetime, timedelta
-from flask import Blueprint, render_template, redirect, url_for, request, flash, abort, send_file, jsonify, current_app
+from flask import Blueprint, render_template, redirect, url_for, request, flash, abort, send_file, jsonify, current_app, Response
 from flask_login import login_required, current_user
 from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
@@ -39,6 +39,7 @@ from ..whatsapp import send_account_welcome_whatsapp
 bp = Blueprint("doctor", __name__, template_folder="../templates/doctor")
 
 ALLOWED_AVATAR_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+CONSULTATION_RECORD_LIMIT_BYTES = 1_000_000
 
 
 @bp.before_request
@@ -420,6 +421,35 @@ def _parse_datetime_local(value):
         return None
 
 
+def _store_consultation_record(consultation):
+    ended_at = consultation.ended_at or datetime.now()
+    started_at = consultation.doctor_started_at or ended_at
+    duration_minutes = max(0, int((ended_at - started_at).total_seconds() // 60))
+    lines = [
+        "NMB-HLab Online Consultation Record",
+        f"Consultation ID: {consultation.id}",
+        f"Request: {consultation.request.request_number if consultation.request else consultation.request_id}",
+        f"Patient: {consultation.patient.full_name if consultation.patient else consultation.patient_id}",
+        f"Doctor: {consultation.doctor.full_name or consultation.doctor.email if consultation.doctor else consultation.doctor_id}",
+        f"Scheduled: {consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') if consultation.scheduled_at else 'Not scheduled'}",
+        f"Started: {started_at.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Ended: {ended_at.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Duration minutes: {duration_minutes}",
+        "",
+        "Storage policy: Live video and audio are not archived by this portal.",
+        "This compact session record is intentionally kept below 1 MB, including sessions longer than one hour.",
+    ]
+    body = "\n".join(lines) + "\n"
+    encoded = body.encode("utf-8")
+    if len(encoded) >= CONSULTATION_RECORD_LIMIT_BYTES:
+        encoded = encoded[:CONSULTATION_RECORD_LIMIT_BYTES - 1]
+        body = encoded.decode("utf-8", errors="ignore")
+    consultation.session_record_filename = f"consultation-{consultation.id}.txt"
+    consultation.session_record_mime = "text/plain"
+    consultation.session_record_size = len(body.encode("utf-8"))
+    consultation.session_record_body = body
+
+
 @bp.route("/requests/<request_id>")
 def request_detail(request_id):
     req = db.session.get(TestRequest, request_id)
@@ -575,10 +605,27 @@ def end_consultation(consultation_id):
         return redirect(url_for("doctor.consultations"))
     consultation.status = "completed"
     consultation.ended_at = datetime.now()
+    _store_consultation_record(consultation)
     log_audit(current_user.id, "complete_online_consultation", "online_consultation", consultation.id)
     db.session.commit()
     flash("Online consultation completed.", "success")
     return redirect(url_for("doctor.consultations"))
+
+
+@bp.route("/consultations/<consultation_id>/record")
+def consultation_record(consultation_id):
+    consultation = _doctor_consultation_or_404(consultation_id)
+    if not consultation.session_record_body:
+        flash("No consultation record is available yet.", "error")
+        return redirect(url_for("doctor.consultations"))
+    return Response(
+        consultation.session_record_body,
+        mimetype=consultation.session_record_mime or "text/plain",
+        headers={
+            "Content-Disposition": f"attachment; filename={consultation.session_record_filename or 'consultation-record.txt'}",
+            "Content-Length": str(consultation.session_record_size or len(consultation.session_record_body.encode("utf-8"))),
+        },
+    )
 
 
 @bp.route("/consultations/<consultation_id>/room/<room_token>")

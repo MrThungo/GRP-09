@@ -35,19 +35,6 @@ CREATE TABLE user_roles (
     CONSTRAINT fk_user_roles_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE remember_me_tokens (
-    id NVARCHAR(36) NOT NULL PRIMARY KEY,
-    user_id NVARCHAR(36) NOT NULL,
-    token_hash NVARCHAR(64) NOT NULL,
-    user_agent_hash NVARCHAR(64) NULL,
-    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-    last_used_at DATETIME2 NULL,
-    expires_at DATETIME2 NOT NULL,
-    CONSTRAINT fk_remember_me_tokens_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE INDEX ix_remember_me_tokens_user_id ON remember_me_tokens(user_id);
-CREATE INDEX ix_remember_me_tokens_expires_at ON remember_me_tokens(expires_at);
-
 CREATE TABLE conditions (
     id NVARCHAR(36) NOT NULL PRIMARY KEY,
     name NVARCHAR(120) NOT NULL UNIQUE,
@@ -268,6 +255,51 @@ CREATE TABLE test_result_reviews (
     FOREIGN KEY(item_id) REFERENCES test_request_items(id) ON DELETE CASCADE,
     FOREIGN KEY(reviewer_id) REFERENCES users(id)
 );
+
+CREATE TABLE online_consultations (
+    id NVARCHAR(36) NOT NULL PRIMARY KEY,
+    request_id NVARCHAR(36) NOT NULL,
+    patient_id NVARCHAR(36) NOT NULL,
+    doctor_id NVARCHAR(36) NOT NULL,
+    requested_by_id NVARCHAR(36) NULL,
+    status NVARCHAR(24) NOT NULL DEFAULT 'offered',
+    patient_preference NVARCHAR(24) NULL,
+    patient_response NVARCHAR(24) NULL,
+    offered_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    patient_responded_at DATETIME2 NULL,
+    scheduled_at DATETIME2 NULL,
+    scheduled_end_at DATETIME2 NULL,
+    doctor_started_at DATETIME2 NULL,
+    ended_at DATETIME2 NULL,
+    invite_message NVARCHAR(MAX) NULL,
+    decline_reason NVARCHAR(MAX) NULL,
+    session_record_filename NVARCHAR(255) NULL,
+    session_record_mime NVARCHAR(80) NULL,
+    session_record_size INT NULL,
+    session_record_body NVARCHAR(MAX) NULL,
+    room_token NVARCHAR(64) NOT NULL,
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY(request_id) REFERENCES test_requests(id) ON DELETE CASCADE,
+    FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE,
+    FOREIGN KEY(doctor_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(requested_by_id) REFERENCES users(id)
+);
+CREATE INDEX idx_online_consults_doctor_status ON online_consultations(doctor_id, status, scheduled_at);
+CREATE INDEX idx_online_consults_patient_status ON online_consultations(patient_id, status, scheduled_at);
+CREATE INDEX idx_online_consults_request_created ON online_consultations(request_id, created_at);
+
+CREATE TABLE consultation_signals (
+    id NVARCHAR(36) NOT NULL PRIMARY KEY,
+    consultation_id NVARCHAR(36) NOT NULL,
+    sender_id NVARCHAR(36) NOT NULL,
+    signal_type NVARCHAR(32) NOT NULL,
+    payload NVARCHAR(MAX) NOT NULL,
+    created_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY(consultation_id) REFERENCES online_consultations(id) ON DELETE CASCADE,
+    FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_consult_signals_room_created ON consultation_signals(consultation_id, created_at);
 
 CREATE TABLE stock_movements (
     id NVARCHAR(36) NOT NULL PRIMARY KEY,

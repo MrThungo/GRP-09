@@ -55,6 +55,9 @@
         {% elif c.status == 'started' %}
           <a href="{{ url_for('patient.consultation_room', consultation_id=c.id, room_token=c.room_token) }}"
              class="btn-primary px-3 py-2 text-sm">Join live</a>
+        {% elif c.status == 'completed' and c.session_record_body %}
+          <a href="{{ url_for('patient.consultation_record', consultation_id=c.id) }}"
+             class="btn-secondary px-3 py-2 text-sm">Download record</a>
         {% endif %}
       </div>
     </div>
