@@ -7,3 +7,5 @@ instance/
 .vscode/
 .idea/
 .DS_Store
+App_Data/logs/*
+!App_Data/logs/.gitkeep

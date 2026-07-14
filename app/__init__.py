@@ -9,6 +9,7 @@ from flask_mail import Mail
 from itsdangerous import URLSafeTimedSerializer
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import selectinload
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .extensions import db
 from .models import User
@@ -252,6 +253,11 @@ def create_app():
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = _env_bool("SESSION_COOKIE_SECURE", False)
+    app.config["PREFERRED_URL_SCHEME"] = os.environ.get(
+        "PREFERRED_URL_SCHEME",
+        "https" if app.config["SESSION_COOKIE_SECURE"] else "http",
+    )
 
     # SMTP / Flask-Mail (set via env: MAIL_SERVER, MAIL_PORT, MAIL_USERNAME, MAIL_PASSWORD,
     # MAIL_USE_TLS, MAIL_USE_SSL, MAIL_DEFAULT_SENDER, APP_BASE_URL)
@@ -348,6 +354,15 @@ def create_app():
     login_manager.init_app(app)
     migrate.init_app(app, db)
     mail.init_app(app)
+
+    if _env_bool("TRUST_PROXY_HEADERS", False):
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=int(os.environ.get("PROXY_FIX_X_FOR", "1")),
+            x_proto=int(os.environ.get("PROXY_FIX_X_PROTO", "1")),
+            x_host=int(os.environ.get("PROXY_FIX_X_HOST", "1")),
+            x_prefix=int(os.environ.get("PROXY_FIX_X_PREFIX", "1")),
+        )
 
     @app.after_request
     def _performance_headers(response):

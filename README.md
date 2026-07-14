@@ -127,3 +127,48 @@ For ONP400 deployment, create the SQL Server database manually with
 `mssql+pyodbc://...` connection string. The app only auto-creates tables for
 local SQLite demo mode; it does not call `db.create_all()` for SQL Server.
 
+## IIS publish target
+
+The app will be published to this IIS network share:
+
+```text
+\\SOIT-IIS.MANDELA.AC.ZA\GRP-04-09$
+```
+
+Keep environment-specific values such as `SECRET_KEY`, `DATABASE_URL`, SMTP,
+GreenAPI and Twilio credentials in the server-side environment or `env.txt`;
+do not hard-code secrets into the source tree before publishing.
+
+### Publish without changing the database
+
+While the database is still being tested, publish only the application files.
+Do not run `database/sql_server_schema.sql` against the testing database unless
+you explicitly decide to reset or rebuild that database.
+
+1. Confirm the IIS site has HttpPlatformHandler enabled.
+2. Publish the source to the IIS share:
+
+   ```powershell
+   .\tools\publish-iis.ps1
+   ```
+
+   To preview the copy without writing files:
+
+   ```powershell
+   .\tools\publish-iis.ps1 -Preview
+   ```
+
+3. On the IIS server/share, create a virtual environment in the published folder:
+
+   ```powershell
+   py -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
+
+4. Create the server `env.txt` from `env.production.example`, using the existing
+   testing `DATABASE_URL`. The publish script excludes local `env.txt` by
+   default so local testing secrets are not copied accidentally.
+
+5. Restart the IIS app pool/site. `web.config` runs `wsgi.py` through the local
+   `.venv\Scripts\python.exe` and uses IIS' dynamic `HTTP_PLATFORM_PORT`.
+
