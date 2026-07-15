@@ -1,9 +1,10 @@
 """Application factory."""
 import os
 import secrets
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from flask import Flask, redirect, url_for, request, jsonify, flash
+from flask import Flask, redirect, url_for, request, jsonify, flash, g
 from flask_login import LoginManager, current_user, logout_user
 from flask_migrate import Migrate
 from flask_mail import Mail
@@ -267,6 +268,9 @@ def create_app():
     app.config["PRESENCE_WRITE_INTERVAL_SECONDS"] = int(
         os.environ.get("PRESENCE_WRITE_INTERVAL_SECONDS", "60")
     )
+    app.config["LIVE_SNAPSHOT_CACHE_SECONDS"] = int(
+        os.environ.get("LIVE_SNAPSHOT_CACHE_SECONDS", "3")
+    )
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=7)
     app.config["STATIC_ASSET_VERSION"] = _static_asset_version(app)
 
@@ -387,11 +391,36 @@ def create_app():
             x_prefix=int(os.environ.get("PROXY_FIX_X_PREFIX", "1")),
         )
 
+    @app.before_request
+    def _request_context():
+        request_id = request.headers.get("X-Request-ID", "")
+        request_id = "".join(ch for ch in request_id if ch.isalnum() or ch in "-_")[:64]
+        g.request_id = request_id or uuid.uuid4().hex
+
     @app.after_request
-    def _performance_headers(response):
+    def _response_headers(response):
+        response.headers.setdefault("X-Request-ID", getattr(g, "request_id", ""))
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()",
+        )
+        if app.config["SESSION_COOKIE_SECURE"] and _env_bool("ENABLE_HSTS", True):
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
         if request.endpoint == "static":
             response.cache_control.public = True
             response.cache_control.max_age = 604800
+        elif current_user.is_authenticated and request.endpoint != "api.live_snapshot":
+            content_type = response.headers.get("Content-Type", "")
+            if content_type.startswith(("text/html", "application/json")):
+                response.cache_control.no_store = True
+                response.cache_control.max_age = 0
+                response.vary.add("Cookie")
         return response
 
     # Token serializer for password-reset links

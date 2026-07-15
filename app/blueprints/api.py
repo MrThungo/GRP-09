@@ -2,7 +2,7 @@
 import hashlib
 import json
 from datetime import datetime, timedelta
-from flask import Blueprint, abort, jsonify, request, url_for
+from flask import Blueprint, abort, current_app, jsonify, request, url_for
 from flask_login import login_required, current_user
 from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
@@ -36,6 +36,7 @@ bp = Blueprint("api", __name__)
 ONLINE_WINDOW_MINUTES = 2  # users with last_seen within 2 minutes count as online
 ONLINE_WINDOW_SECONDS = ONLINE_WINDOW_MINUTES * 60
 WAITING_ROOM_WINDOW_SECONDS = 45
+LIVE_SNAPSHOT_CACHE_LIMIT = 500
 
 
 def _consultation_participant_or_404(consultation_id, room_token):
@@ -218,6 +219,36 @@ def _live_snapshot_payload():
     return payload
 
 
+def _live_snapshot_cache_entry():
+    now = datetime.now()
+    ttl = max(0, int(current_app.config.get("LIVE_SNAPSHOT_CACHE_SECONDS", 3)))
+    cache = current_app.config.setdefault("_LIVE_SNAPSHOT_CACHE", {})
+    cache_key = f"{current_user.id}:{current_user.primary_role}"
+    cached = cache.get(cache_key)
+    if cached and ttl and (now - cached["created_at"]).total_seconds() < ttl:
+        return cached
+
+    payload = _live_snapshot_payload()
+    version = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+    entry = {
+        "created_at": now,
+        "version": version,
+        "body": {
+            "version": version,
+            "generated_at": now.isoformat(),
+            "notifications_unread": payload.get("notifications_unread", 0),
+            "messages_unread": payload.get("messages_unread", 0),
+        },
+    }
+    cache[cache_key] = entry
+    if len(cache) > LIVE_SNAPSHOT_CACHE_LIMIT:
+        oldest_key = min(cache, key=lambda key: cache[key]["created_at"])
+        cache.pop(oldest_key, None)
+    return entry
+
+
 @bp.route("/me")
 def me():
     """Lightweight heartbeat used by the client to detect blocked/expired sessions."""
@@ -235,16 +266,17 @@ def me():
 @bp.route("/live/snapshot")
 @login_required
 def live_snapshot():
-    payload = _live_snapshot_payload()
-    version = hashlib.sha256(
-        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
-    ).hexdigest()
-    return jsonify({
-        "version": version,
-        "generated_at": datetime.now().isoformat(),
-        "notifications_unread": payload.get("notifications_unread", 0),
-        "messages_unread": payload.get("messages_unread", 0),
-    })
+    entry = _live_snapshot_cache_entry()
+    version = entry["version"]
+    if request.if_none_match.contains(version):
+        response = current_app.response_class(status=304)
+    else:
+        response = jsonify(entry["body"])
+    response.set_etag(version)
+    response.cache_control.private = True
+    response.cache_control.max_age = max(0, int(current_app.config.get("LIVE_SNAPSHOT_CACHE_SECONDS", 3)))
+    response.vary.add("Cookie")
+    return response
 
 
 @bp.route("/notifications")

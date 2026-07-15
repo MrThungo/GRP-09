@@ -500,6 +500,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   const panel = root.querySelector("[data-bell-panel]");
   const list = root.querySelector("[data-bell-list]");
   const dot = root.querySelector("[data-bell-dot]");
+  let knownUnreadCount = null;
 
   btn.addEventListener("click", () => panel.classList.toggle("open"));
   document.addEventListener("click", (e) => {
@@ -515,8 +516,8 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
         dot.classList.add("hidden");
         return;
       }
-      const unread = items.some(i => !i.read);
-      dot.classList.toggle("hidden", !unread);
+      knownUnreadCount = items.filter(i => !i.read).length;
+      dot.classList.toggle("hidden", knownUnreadCount === 0);
       list.innerHTML = items.map(n => `
         <a href="${n.link || "#"}" data-id="${n.id}"
            class="block px-4 py-3 hover:bg-slate-800 ${n.read ? "opacity-60" : ""}">
@@ -545,6 +546,11 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   }, 30000);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) load();
+  });
+  document.addEventListener("nmb:live-snapshot", event => {
+    const nextUnread = Number(event.detail?.notifications_unread);
+    if (!Number.isFinite(nextUnread) || nextUnread === knownUnreadCount) return;
+    load();
   });
 })();
 
@@ -1565,11 +1571,17 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     if (polling) return;
     polling = true;
     try {
+      const headers = { Accept: "application/json" };
+      if (lastVersion) headers["If-None-Match"] = `"${lastVersion}"`;
       const response = await fetch(snapshotUrl, {
         credentials: "same-origin",
-        cache: "no-store",
-        headers: { Accept: "application/json" },
+        cache: "no-cache",
+        headers,
       });
+      if (response.status === 304) {
+        schedule(POLL_MS);
+        return;
+      }
       if (response.status === 401 || response.status === 403) return;
       if (!response.ok) throw new Error("Live snapshot failed");
       const data = await response.json();
