@@ -15,7 +15,7 @@
   </div>
 </div>
 
-<div class="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+<div class="stats-grid mb-6">
   <a href="{{ url_for('doctor.requests_list') }}?status=submitted,samples_received,in_progress">
     {{ stat_card("Open", stats.open, "sky") }}
   </a>

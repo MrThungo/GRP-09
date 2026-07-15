@@ -1,0 +1,43 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Consultation video{% endblock %}
+{% block content %}
+<section class="consult-record-page">
+  <div class="consult-record-header">
+    <div>
+      <p class="section-kicker">Completed online consultation</p>
+      <h1>{{ consultation.request.request_number }} session replay</h1>
+      <p>
+        {{ consultation.patient.full_name if consultation.patient else 'Patient' }}
+        {% if consultation.ended_at %}
+          &middot; Ended {{ consultation.ended_at.strftime('%Y-%m-%d %H:%M') }}
+        {% endif %}
+      </p>
+    </div>
+    <a class="btn-secondary px-3 py-2 text-sm" href="{{ back_url }}">Back</a>
+  </div>
+
+  {% if stream_url %}
+    <div class="consult-record-player">
+      <video controls preload="metadata" playsinline>
+        <source src="{{ stream_url }}" type="{{ consultation.session_record_mime or 'video/webm' }}">
+        Your browser cannot play this consultation video.
+      </video>
+    </div>
+    <p class="consult-record-meta">
+      Video ready for playback
+      {% if consultation.session_record_size %}
+        &middot; {{ (consultation.session_record_size / 1024 / 1024)|round(2) }} MB
+      {% endif %}
+    </p>
+  {% elif text_record %}
+    <div class="consult-record-fallback">
+      <h2>Session record</h2>
+      <pre>{{ text_record }}</pre>
+    </div>
+  {% else %}
+    <div class="surface-card p-5 text-sm text-slate-400">
+      No playable consultation video is available for this session.
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

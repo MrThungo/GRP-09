@@ -364,6 +364,8 @@ body.sidebar-open .sidebar-backdrop {
 
 .stat-card {
   position: relative;
+  display: flex;
+  min-height: 6.75rem;
   overflow: hidden;
   border-radius: .5rem;
   padding: 1.1rem;
@@ -384,7 +386,9 @@ a:hover .stat-card,
   font-size: .7rem;
   font-weight: 700;
   letter-spacing: .08em;
+  line-height: 1.2;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .stat-value {
@@ -392,7 +396,8 @@ a:hover .stat-card,
   color: #f8fafc;
   font-size: clamp(1.7rem, 3vw, 2.35rem);
   font-weight: 800;
-  letter-spacing: -.03em;
+  letter-spacing: 0;
+  line-height: 1;
 }
 
 .section-kicker {
@@ -406,7 +411,19 @@ a:hover .stat-card,
 .section-title {
   color: #f8fafc;
   font-weight: 800;
-  letter-spacing: -.03em;
+  letter-spacing: 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11.5rem), 1fr));
+  gap: 1rem;
+}
+
+.stats-grid > a,
+.stats-grid > .stat-card {
+  min-width: 0;
+  height: 100%;
 }
 
 .btn-primary,
@@ -1182,6 +1199,89 @@ body.confirm-modal-open {
   gap: .5rem;
 }
 
+.consult-waiting-roster {
+  display: grid;
+  gap: .75rem;
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  background: var(--panel-strong);
+  padding: 1rem;
+  min-width: 0;
+}
+
+.consult-waiting-roster h2 {
+  color: #e0f2fe;
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  font-weight: 900;
+}
+
+.consult-waiting-roster ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.consult-waiting-roster li {
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  border-radius: 999px;
+  background: rgba(14, 116, 144, 0.16);
+  color: #bae6fd;
+  padding: .42rem .7rem;
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.consult-media-controls {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.consult-icon-button {
+  display: inline-grid;
+  width: 2.7rem;
+  height: 2.7rem;
+  place-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: .5rem;
+  background: rgba(15, 23, 42, 0.82);
+  color: #e0f2fe;
+  transition: border-color .18s ease, color .18s ease, background .18s ease, transform .18s ease;
+}
+
+.consult-icon-button:hover,
+.consult-icon-button:focus-visible {
+  border-color: rgba(56, 189, 248, 0.72);
+  background: rgba(14, 116, 144, 0.24);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.consult-icon-button.is-off {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: rgba(127, 29, 29, 0.26);
+  color: #fecaca;
+}
+
+.consult-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+  transform: none;
+}
+
+.consult-icon-button svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .consult-video-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1240,6 +1340,67 @@ body.confirm-modal-open {
 
 .consult-video-empty.hidden {
   display: none;
+}
+
+.consult-record-page {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.consult-record-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.consult-record-header h1 {
+  color: #fff;
+  font-size: clamp(1.35rem, 4vw, 2rem);
+  font-weight: 900;
+}
+
+.consult-record-header p:not(.section-kicker),
+.consult-record-meta {
+  color: #94a3b8;
+  font-size: .9rem;
+}
+
+.consult-record-player {
+  overflow: hidden;
+  border: 1px solid rgba(51, 65, 85, 0.9);
+  border-radius: .5rem;
+  background: #020617;
+}
+
+.consult-record-player video {
+  display: block;
+  width: 100%;
+  max-height: min(72vh, 46rem);
+  background: #020617;
+}
+
+.consult-record-fallback {
+  border: 1px solid rgba(51, 65, 85, 0.9);
+  border-radius: .5rem;
+  background: rgba(2, 6, 23, 0.76);
+  padding: 1rem;
+}
+
+.consult-record-fallback h2 {
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.consult-record-fallback pre {
+  overflow-x: auto;
+  margin-top: .75rem;
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (min-width: 900px) {

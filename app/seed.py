@@ -1,14 +1,17 @@
 """Seed default users + sample test catalog using SQLAlchemy ORM."""
+import os
+import secrets
+
 from .extensions import db
 from .models import User, UserRole, Patient, TestCatalog, SampleType
 
 
 DEFAULT_USERS = [
-    ("admin@nmb.example.com",      "admin123",   "Admin User",   "admin"),
-    ("manager@nmb.example.com",    "manager123", "Lab Manager",  "lab_manager"),
-    ("doctor@nmb.example.com",     "doctor123",  "Dr. House",    "doctor"),
-    ("technician@nmb.example.com", "tech123",    "Tech User",    "lab_technician"),
-    ("patient@nmb.example.com",    "patient123", "Jane Patient", "patient"),
+    ("admin@nmb.example.com",      "SEED_ADMIN_PASSWORD",      "Admin User",   "admin"),
+    ("manager@nmb.example.com",    "SEED_MANAGER_PASSWORD",    "Lab Manager",  "lab_manager"),
+    ("doctor@nmb.example.com",     "SEED_DOCTOR_PASSWORD",     "Dr. House",    "doctor"),
+    ("technician@nmb.example.com", "SEED_TECHNICIAN_PASSWORD", "Tech User",    "lab_technician"),
+    ("patient@nmb.example.com",    "SEED_PATIENT_PASSWORD",    "Jane Patient", "patient"),
 ]
 
 CATALOG = [
@@ -42,15 +45,31 @@ CATALOG_SAMPLE_TYPES = {
 }
 
 
+def _seed_password(email, env_name):
+    password = os.environ.get(env_name) or os.environ.get("SEED_DEFAULT_USER_PASSWORD")
+    if password:
+        return password, False
+    password = secrets.token_urlsafe(12)
+    print(f"Generated temporary password for seeded account {email}: {password}")
+    return password, True
+
+
 def seed_database():
     db.create_all()
 
     if User.query.first():
         return
 
-    for email, pwd, name, role in DEFAULT_USERS:
-        user = User(email=email, full_name=name, must_change_password=False)
-        user.set_password(pwd)
+    for email, env_name, name, role in DEFAULT_USERS:
+        password, generated = _seed_password(email, env_name)
+        user = User(
+            email=email,
+            full_name=name,
+            must_change_password=generated,
+        )
+        user.set_password(password)
+        if generated:
+            user.temp_password = password
         db.session.add(user)
         db.session.flush()
         db.session.add(UserRole(user_id=user.id, role=role))

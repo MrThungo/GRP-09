@@ -1,17 +1,41 @@
 """Tiny JSON API consumed by the frontend (notification bell, blocked-user heartbeat, online users)."""
+import hashlib
 import json
 from datetime import datetime, timedelta
 from flask import Blueprint, abort, jsonify, request, url_for
 from flask_login import login_required, current_user
+from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
+from ..consultation_recordings import (
+    append_recording_chunk,
+    finalize_chunked_recording,
+    store_recording_file,
+)
 from ..extensions import db
-from ..models import Notification, User, UserRole, OnlineConsultation, ConsultationSignal
+from ..models import (
+    AccessRequest,
+    ChatMessage,
+    Consumable,
+    ConsumableOrder,
+    Notification,
+    OnlineConsultation,
+    Patient,
+    Sample,
+    StockMovement,
+    TestCatalog,
+    TestRequest,
+    TestRequestItem,
+    User,
+    UserRole,
+    ConsultationSignal,
+)
 from ..presence import last_seen_age_label
 
 bp = Blueprint("api", __name__)
 
 ONLINE_WINDOW_MINUTES = 2  # users with last_seen within 2 minutes count as online
 ONLINE_WINDOW_SECONDS = ONLINE_WINDOW_MINUTES * 60
+WAITING_ROOM_WINDOW_SECONDS = 45
 
 
 def _consultation_participant_or_404(consultation_id, room_token):
@@ -29,6 +53,171 @@ def _consultation_participant_or_404(consultation_id, room_token):
     return consultation
 
 
+def _consultation_waiting_participants(consultation):
+    now = datetime.now()
+    cutoff = now - timedelta(seconds=WAITING_ROOM_WINDOW_SECONDS)
+    rows = (
+        ConsultationSignal.query
+        .filter(
+            ConsultationSignal.consultation_id == consultation.id,
+            ConsultationSignal.signal_type == "waiting",
+            ConsultationSignal.created_at >= cutoff,
+        )
+        .order_by(ConsultationSignal.created_at.asc())
+        .all()
+    )
+    participants = []
+    for row in rows:
+        if row.sender_id == consultation.patient_user_id:
+            participants.append({
+                "id": row.sender_id,
+                "name": consultation.patient.full_name if consultation.patient else "Patient",
+                "role": "patient",
+                "waiting_since": row.created_at.isoformat(),
+            })
+    return participants
+
+
+def _max_dt(query, column):
+    return query.with_entities(func.max(column)).scalar()
+
+
+def _iso(value):
+    return value.isoformat() if value else ""
+
+
+def _group_counts(query, column):
+    rows = query.with_entities(column, func.count()).group_by(column).all()
+    return "|".join(
+        f"{key or 'none'}:{count}"
+        for key, count in sorted(rows, key=lambda row: str(row[0] or ""))
+    )
+
+
+def _patient_for_current_user():
+    return Patient.query.filter_by(profile_id=current_user.id, deleted_at=None).first()
+
+
+def _scoped_request_query(role, patient):
+    if role == "patient":
+        if not patient:
+            return TestRequest.query.filter(TestRequest.id == "__none__")
+        return TestRequest.query.filter(TestRequest.patient_id == patient.id)
+    if role == "doctor":
+        return TestRequest.query.filter(TestRequest.doctor_id == current_user.id)
+    return TestRequest.query
+
+
+def _scoped_item_query(role, patient):
+    query = TestRequestItem.query.join(TestRequest, TestRequestItem.request_id == TestRequest.id)
+    if role == "patient":
+        if not patient:
+            return query.filter(TestRequest.id == "__none__")
+        return query.filter(TestRequest.patient_id == patient.id)
+    if role == "doctor":
+        return query.filter(TestRequest.doctor_id == current_user.id)
+    if role == "lab_technician":
+        return query.filter(or_(
+            TestRequestItem.assigned_to == current_user.id,
+            TestRequestItem.assigned_to.is_(None),
+        ))
+    return query
+
+
+def _scoped_sample_query(role, patient):
+    query = Sample.query.join(TestRequest, Sample.request_id == TestRequest.id)
+    if role == "patient":
+        if not patient:
+            return query.filter(TestRequest.id == "__none__")
+        return query.filter(TestRequest.patient_id == patient.id)
+    if role == "doctor":
+        return query.filter(TestRequest.doctor_id == current_user.id)
+    return query
+
+
+def _scoped_consultation_query(role, patient):
+    if role == "patient":
+        if not patient:
+            return OnlineConsultation.query.filter(OnlineConsultation.id == "__none__")
+        return OnlineConsultation.query.filter(OnlineConsultation.patient_id == patient.id)
+    if role == "doctor":
+        return OnlineConsultation.query.filter(OnlineConsultation.doctor_id == current_user.id)
+    return OnlineConsultation.query
+
+
+def _scoped_access_request_query(role, patient):
+    if role == "patient":
+        if not patient:
+            return AccessRequest.query.filter(AccessRequest.id == "__none__")
+        return AccessRequest.query.filter(AccessRequest.patient_id == patient.id)
+    if role == "doctor":
+        return AccessRequest.query.filter(AccessRequest.doctor_id == current_user.id)
+    return AccessRequest.query
+
+
+def _live_snapshot_payload():
+    role = current_user.primary_role
+    patient = _patient_for_current_user() if role == "patient" else None
+
+    notifications = Notification.query.filter(Notification.user_id == current_user.id)
+    messages = ChatMessage.query.filter(or_(
+        ChatMessage.sender_id == current_user.id,
+        ChatMessage.recipient_id == current_user.id,
+    ))
+    requests = _scoped_request_query(role, patient)
+    request_items = _scoped_item_query(role, patient)
+    samples = _scoped_sample_query(role, patient)
+    consultations = _scoped_consultation_query(role, patient)
+    access_requests = _scoped_access_request_query(role, patient)
+
+    payload = {
+        "role": role,
+        "notifications_latest": _iso(_max_dt(notifications, Notification.created_at)),
+        "notifications_unread": notifications.filter(Notification.read.is_(False)).count(),
+        "messages_latest": _iso(_max_dt(messages, ChatMessage.created_at)),
+        "messages_read_latest": _iso(_max_dt(messages, ChatMessage.read_at)),
+        "messages_unread": messages.filter(
+            ChatMessage.recipient_id == current_user.id,
+            ChatMessage.read_at.is_(None),
+        ).count(),
+        "requests_created": _iso(_max_dt(requests, TestRequest.created_at)),
+        "requests_updated": _iso(_max_dt(requests, TestRequest.updated_at)),
+        "requests_released": _iso(_max_dt(requests, TestRequest.released_at)),
+        "request_statuses": _group_counts(requests, TestRequest.status),
+        "items_created": _iso(_max_dt(request_items, TestRequestItem.created_at)),
+        "items_started": _iso(_max_dt(request_items, TestRequestItem.started_at)),
+        "items_completed": _iso(_max_dt(request_items, TestRequestItem.completed_at)),
+        "items_captured": _iso(_max_dt(request_items, TestRequestItem.captured_at)),
+        "items_verified": _iso(_max_dt(request_items, TestRequestItem.verified_at)),
+        "item_statuses": _group_counts(request_items, TestRequestItem.status),
+        "samples_received": _iso(_max_dt(samples, Sample.received_at)),
+        "samples_rejected": _iso(_max_dt(samples, Sample.rejected_at)),
+        "sample_statuses": _group_counts(samples, Sample.status),
+        "consultations_created": _iso(_max_dt(consultations, OnlineConsultation.created_at)),
+        "consultations_updated": _iso(_max_dt(consultations, OnlineConsultation.updated_at)),
+        "consultation_statuses": _group_counts(consultations, OnlineConsultation.status),
+        "access_created": _iso(_max_dt(access_requests, AccessRequest.created_at)),
+        "access_responded": _iso(_max_dt(access_requests, AccessRequest.responded_at)),
+        "access_statuses": _group_counts(access_requests, AccessRequest.status),
+    }
+
+    if role in ("lab_manager", "admin"):
+        payload.update({
+            "catalog_latest": _iso(_max_dt(TestCatalog.query, TestCatalog.created_at)),
+            "consumables_latest": _iso(_max_dt(Consumable.query, Consumable.updated_at)),
+            "orders_latest": _iso(_max_dt(ConsumableOrder.query, ConsumableOrder.updated_at)),
+            "stock_latest": _iso(_max_dt(StockMovement.query, StockMovement.created_at)),
+            "order_statuses": _group_counts(ConsumableOrder.query, ConsumableOrder.status),
+        })
+    if role == "admin":
+        payload.update({
+            "users_latest": _iso(_max_dt(User.query, User.updated_at)),
+            "patients_latest": _iso(_max_dt(Patient.query, Patient.updated_at)),
+        })
+
+    return payload
+
+
 @bp.route("/me")
 def me():
     """Lightweight heartbeat used by the client to detect blocked/expired sessions."""
@@ -40,6 +229,21 @@ def me():
         "id": current_user.id,
         "email": current_user.email,
         "role": current_user.primary_role,
+    })
+
+
+@bp.route("/live/snapshot")
+@login_required
+def live_snapshot():
+    payload = _live_snapshot_payload()
+    version = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()
+    return jsonify({
+        "version": version,
+        "generated_at": datetime.now().isoformat(),
+        "notifications_unread": payload.get("notifications_unread", 0),
+        "messages_unread": payload.get("messages_unread", 0),
     })
 
 
@@ -131,6 +335,7 @@ def consultation_status(consultation_id, room_token):
         "started": consultation.status == "started",
         "doctor_started_at": consultation.doctor_started_at.isoformat() if consultation.doctor_started_at else None,
         "scheduled_at": consultation.scheduled_at.isoformat() if consultation.scheduled_at else None,
+        "waiting_participants": _consultation_waiting_participants(consultation) if is_doctor else [],
         "room_url": url_for(
             "doctor.consultation_room" if is_doctor else "patient.consultation_room",
             consultation_id=consultation.id,
@@ -143,14 +348,32 @@ def consultation_status(consultation_id, room_token):
 @login_required
 def consultation_signals(consultation_id, room_token):
     consultation = _consultation_participant_or_404(consultation_id, room_token)
-    if consultation.status != "started":
-        return jsonify({"error": "session_not_started"}), 409
 
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         signal_type = (data.get("type") or "").strip()
-        if signal_type not in {"ready", "offer", "answer", "ice", "leave"}:
+        if signal_type not in {"waiting", "ready", "offer", "answer", "ice", "leave"}:
             return jsonify({"error": "invalid_signal_type"}), 400
+        if signal_type == "waiting":
+            if current_user.id != consultation.patient_user_id:
+                return jsonify({"error": "forbidden"}), 403
+            if consultation.status not in ("accepted", "started"):
+                return jsonify({"error": "waiting_room_closed"}), 409
+            ConsultationSignal.query.filter_by(
+                consultation_id=consultation.id,
+                sender_id=current_user.id,
+                signal_type="waiting",
+            ).delete()
+            db.session.add(ConsultationSignal(
+                consultation_id=consultation.id,
+                sender_id=current_user.id,
+                signal_type=signal_type,
+                payload=json.dumps(data.get("payload") or {}),
+            ))
+            db.session.commit()
+            return jsonify({"ok": True})
+        if consultation.status != "started":
+            return jsonify({"error": "session_not_started"}), 409
         db.session.add(ConsultationSignal(
             consultation_id=consultation.id,
             sender_id=current_user.id,
@@ -160,10 +383,14 @@ def consultation_signals(consultation_id, room_token):
         db.session.commit()
         return jsonify({"ok": True})
 
+    if consultation.status != "started":
+        return jsonify({"error": "session_not_started"}), 409
+
     rows = (ConsultationSignal.query
             .filter(
                 ConsultationSignal.consultation_id == consultation.id,
                 ConsultationSignal.sender_id != current_user.id,
+                ConsultationSignal.signal_type != "waiting",
             )
             .order_by(ConsultationSignal.created_at.asc())
             .limit(120)
@@ -178,4 +405,54 @@ def consultation_signals(consultation_id, room_token):
             }
             for row in rows
         ]
+    })
+
+
+@bp.route("/consultations/<consultation_id>/<room_token>/recording", methods=["POST"])
+@login_required
+def consultation_recording(consultation_id, room_token):
+    consultation = _consultation_participant_or_404(consultation_id, room_token)
+    if current_user.id != consultation.doctor_id:
+        return jsonify({"error": "forbidden"}), 403
+    if consultation.status not in ("started", "completed"):
+        return jsonify({"error": "session_not_active"}), 409
+
+    try:
+        if request.form.get("complete") == "1":
+            finalize_chunked_recording(
+                consultation,
+                request.form.get("recording_id"),
+                request.form.get("mime") or "video/webm",
+                request.form.get("extension") or ".webm",
+            )
+            db.session.commit()
+            return jsonify({
+                "ok": True,
+                "filename": consultation.session_record_filename,
+                "mime": consultation.session_record_mime,
+                "size": consultation.session_record_size,
+            })
+
+        chunk = request.files.get("chunk")
+        if chunk:
+            size = append_recording_chunk(
+                consultation,
+                request.form.get("recording_id"),
+                chunk,
+            )
+            db.session.commit()
+            return jsonify({"ok": True, "size": size})
+
+        uploaded = request.files.get("recording")
+        if not uploaded:
+            return jsonify({"error": "missing_recording"}), 400
+        store_recording_file(consultation, uploaded)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    db.session.commit()
+    return jsonify({
+        "ok": True,
+        "filename": consultation.session_record_filename,
+        "mime": consultation.session_record_mime,
+        "size": consultation.session_record_size,
     })

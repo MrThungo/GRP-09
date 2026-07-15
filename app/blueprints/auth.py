@@ -13,10 +13,18 @@ from ..auth_utils import password_policy_error
 from ..email import send_email
 from ..services import notify_admins, log_audit
 from ..sa_id import validate_sa_id
-from ..DefaultUsers import DEFAULT_USER_PASSWORDS
 from ..whatsapp import send_account_welcome_whatsapp
 
 bp = Blueprint("auth", __name__, template_folder="../templates/auth")
+
+
+QUICK_LOGIN_ACCOUNTS = [
+    {"key": "patient", "label": "Patient", "email": "patient@nmbhlab.com", "wide": False},
+    {"key": "doctor", "label": "Doctor", "email": "doctor@nmbhlab.com", "wide": False},
+    {"key": "technician", "label": "Lab Technician", "email": "tech@nmbhlab.com", "wide": False},
+    {"key": "manager", "label": "Lab Manager", "email": "manager@nmbhlab.com", "wide": False},
+    {"key": "admin", "label": "Admin", "email": "admin@nmbhlab.com", "wide": True},
+]
 
 
 def _post_login_redirect(user):
@@ -27,6 +35,41 @@ def _post_login_redirect(user):
     return redirect(url_for("app_home"))
 
 
+def _quick_login_accounts():
+    return QUICK_LOGIN_ACCOUNTS if current_app.config.get("ENABLE_QUICK_LOGIN") else []
+
+
+def _render_login():
+    accounts = _quick_login_accounts()
+    return render_template(
+        "auth/login.html",
+        QUICK_LOGIN_ACCOUNTS=accounts,
+        quick_login_accounts=accounts,
+    )
+
+
+def _login_unavailable_message(user):
+    if not user:
+        return "Quick login account was not found. Seed local users first."
+    if getattr(user, "deleted_at", None):
+        return "Your account has been deleted. Please contact an administrator."
+    if getattr(user, "is_blocked", False):
+        return "Your account has been blocked. Please contact an administrator."
+    if getattr(user, "is_deactivated", False):
+        return "Your account is deactivated. An administrator must reactivate it before you can sign in."
+    return None
+
+
+def _complete_login(user, current_password=None):
+    login_user(user)
+    session.permanent = False
+    if user.must_change_password:
+        temp_password = current_password or user.temp_password
+        if temp_password:
+            session["_temp_password"] = temp_password
+    return _post_login_redirect(user)
+
+
 @bp.route("/login", methods=["GET", "POST"])
 @bp.route("/signin", methods=["GET", "POST"])
 @bp.route("/sign-in", methods=["GET", "POST"])
@@ -34,28 +77,33 @@ def login():
     if current_user.is_authenticated:
         return _post_login_redirect(current_user)
     if request.method == "POST":
+        quick_key = (request.form.get("quick_login") or "").strip()
+        if quick_key:
+            if not current_app.config.get("ENABLE_QUICK_LOGIN"):
+                flash("Quick login is disabled for this environment.", "error")
+                return _render_login()
+            account = next((item for item in QUICK_LOGIN_ACCOUNTS if item["key"] == quick_key), None)
+            user = User.query.filter_by(email=account["email"]).first() if account else None
+            unavailable = _login_unavailable_message(user)
+            if unavailable:
+                flash(unavailable, "error")
+                return _render_login()
+            return _complete_login(user)
+
         email = (request.form.get("email") or "").lower().strip()
         password = request.form.get("password") or ""
         if not email or not password:
             flash("Email and password are required.", "error")
         else:
             user = User.query.filter_by(email=email).first()
-            if user and getattr(user, "deleted_at", None):
-                flash("Your account has been deleted. Please contact an administrator.", "error")
-            elif user and getattr(user, "is_blocked", False):
-                flash("Your account has been blocked. Please contact an administrator.", "error")
-            elif user and getattr(user, "is_deactivated", False):
-                flash("Your account is deactivated. An administrator must reactivate it before you can sign in.", "error")
+            unavailable = _login_unavailable_message(user)
+            if user and unavailable:
+                flash(unavailable, "error")
             elif user and user.check_password(password):
-                login_user(user)
-                session.permanent = False
-                if user.must_change_password:
-                    session["_temp_password"] = password
-                response = _post_login_redirect(user)
-                return response
+                return _complete_login(user, password)
             else:
                 flash("Invalid email or password", "error")
-    return render_template("auth/login.html")
+    return _render_login()
 
 
 @bp.route("/signup", methods=["GET", "POST"])
@@ -189,10 +237,6 @@ def change_password():
     # password so users who never received their welcome email can still change.
     temp_password = session.get("_temp_password") or (current_user.temp_password or "")
     current_password_prefill = temp_password
-    if not current_password_prefill:
-        demo_password = DEFAULT_USER_PASSWORDS.get((current_user.email or "").lower())
-        if demo_password and current_user.check_password(demo_password):
-            current_password_prefill = demo_password
     if request.method == "POST":
         current = request.form.get("current_password") or ""
         new = request.form.get("new_password") or ""

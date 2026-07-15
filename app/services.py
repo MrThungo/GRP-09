@@ -124,7 +124,8 @@ def verify_item(item: TestRequestItem, actor_id, note=None):
         note=note,
     ))
     req = item.request
-    if all(i.status == "verified" for i in req.items):
+    active_items = [i for i in req.items if i.status != "cancelled"]
+    if active_items and all(i.status == "verified" for i in active_items):
         req.status = "completed"
         pdf = build_request_results_pdf(req)
         # Notify the requesting doctor so they can review and release to patient.

@@ -30,15 +30,16 @@ flask --app wsgi:app seed       # creates the demo accounts
 flask --app wsgi:app run        # http://localhost:5000
 ```
 
-### Demo accounts (after `seed`)
+### Seeded local accounts
 
-| Role            | Email                       | Password    |
-| --------------- | --------------------------- | ----------- |
-| Admin           | admin@nmb.example.com             | admin123    |
-| Lab manager     | manager@nmb.example.com           | manager123  |
-| Doctor          | doctor@nmb.example.com            | doctor123   |
-| Lab technician  | technician@nmb.example.com        | tech123     |
-| Patient         | patient@nmb.example.com           | patient123  |
+Seeded account passwords are not stored in source code. For local testing, set
+`DEFAULT_USER_PASSWORD` to use one shared password, or set role-specific values
+such as `DEFAULT_ADMIN_PASSWORD`, `DEFAULT_DOCTOR_PASSWORD`,
+`DEFAULT_TECHNICIAN_PASSWORD`, `DEFAULT_MANAGER_PASSWORD` and
+`DEFAULT_PATIENT_PASSWORD`. If these are blank, the app generates temporary
+passwords during local seeding/startup and prints them to the server console.
+Set `ENABLE_QUICK_LOGIN=true` only in local/testing env files to show quick
+login buttons. Keep it `false` for the IIS production/publish environment.
 
 ## Background media on the landing page
 

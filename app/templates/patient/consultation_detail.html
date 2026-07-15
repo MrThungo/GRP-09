@@ -74,7 +74,7 @@
       </form>
     {% elif consultation.status == 'accepted' %}
       <h2 class="text-lg font-bold text-white">Meeting accepted</h2>
-      <p class="mt-2 text-sm text-slate-400">You can enter the calm waiting room. The call starts automatically after your doctor opens the session.</p>
+      <p class="mt-2 text-sm text-slate-400">You can enter the private waiting room. The call starts automatically after your doctor opens the session.</p>
       <a class="btn-primary mt-4 inline-flex w-full justify-center px-4 py-3 text-sm"
          href="{{ url_for('patient.consultation_waiting', consultation_id=consultation.id, room_token=consultation.room_token) }}">Enter waiting room</a>
     {% elif consultation.status == 'started' %}
@@ -86,12 +86,16 @@
       <h2 class="text-lg font-bold text-white">Invite declined</h2>
       <p class="mt-2 text-sm text-slate-400">Your doctor can send another online invite if needed.</p>
     {% elif consultation.status == 'completed' and consultation.session_record_body %}
+      {% set is_video_record = consultation.session_record_mime and consultation.session_record_mime.startswith('video/') %}
       <h2 class="text-lg font-bold text-white">Session completed</h2>
       <p class="mt-2 text-sm text-slate-400">
-        A compact consultation record is ready. It is {{ consultation.session_record_size or 0 }} bytes and stays under 1 MB.
+        Your consultation {{ 'video' if is_video_record else 'record' }} is ready.
+        {% if consultation.session_record_size %}Size: {{ consultation.session_record_size }} bytes.{% endif %}
       </p>
       <a class="btn-secondary mt-4 inline-flex w-full justify-center px-4 py-3 text-sm"
-         href="{{ url_for('patient.consultation_record', consultation_id=consultation.id) }}">Download record</a>
+         href="{{ url_for('patient.consultation_record', consultation_id=consultation.id) }}">
+        {{ 'Watch video' if is_video_record else 'View record' }}
+      </a>
     {% else %}
       <h2 class="text-lg font-bold text-white">{{ labels.get(consultation.status, consultation.status.replace('_', ' ')|title) }}</h2>
       <p class="mt-2 text-sm text-slate-400">No action is required right now.</p>

@@ -4,6 +4,7 @@
 <section class="consult-waiting"
          data-consultation-waiting
          data-status-url="{{ url_for('api.consultation_status', consultation_id=consultation.id, room_token=consultation.room_token) }}"
+         data-signals-url="{{ url_for('api.consultation_signals', consultation_id=consultation.id, room_token=consultation.room_token) }}"
          data-join-url="{{ url_for('patient.consultation_room', consultation_id=consultation.id, room_token=consultation.room_token) }}">
   <div class="consult-calm-visual" aria-hidden="true">
     <span></span>
@@ -14,8 +15,8 @@
     <p class="section-kicker">Private waiting room</p>
     <h1>Take a moment. Your doctor will let you in soon.</h1>
     <p>
-      This calm room will automatically move you into the secure consultation
-      once your doctor opens the live session.
+      You are checked in for this private online consultation. The session will
+      open automatically when your doctor starts it.
     </p>
     <div class="consult-waiting-card">
       <div>

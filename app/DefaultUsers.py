@@ -1,24 +1,25 @@
+import os
+import secrets
+
 from .extensions import db
 from .models import User, UserRole, Patient, TestCatalog, SampleType
 
 
-# Emails of seeded demo accounts. These accounts are exempt from the
-# "must change password on first login" enforcement popover.
-DEFAULT_USER_EMAILS = {
-    "admin@nmbhlab.com",
-    "doctor@nmbhlab.com",
-    "tech@nmbhlab.com",
-    "manager@nmbhlab.com",
-    "patient@nmbhlab.com",
-}
+DEFAULT_USER_SPECS = [
+    ("admin@nmbhlab.com", "DEFAULT_ADMIN_PASSWORD", ["admin"], "System Admin"),
+    ("doctor@nmbhlab.com", "DEFAULT_DOCTOR_PASSWORD", ["doctor"], "Group Doctor"),
+    ("tech@nmbhlab.com", "DEFAULT_TECHNICIAN_PASSWORD", ["lab_technician"], "Lab Technician"),
+    ("manager@nmbhlab.com", "DEFAULT_MANAGER_PASSWORD", ["lab_manager"], "Lab Manager"),
+    ("patient@nmbhlab.com", "DEFAULT_PATIENT_PASSWORD", ["patient"], "Jane Patient"),
+]
 
-DEFAULT_USER_PASSWORDS = {
-    "admin@nmbhlab.com": "Admin@123",
-    "doctor@nmbhlab.com": "Doctor@123",
-    "tech@nmbhlab.com": "Tech@123",
-    "manager@nmbhlab.com": "Manager@123",
-    "patient@nmbhlab.com": "Patient@123",
-}
+def _seed_password(email, env_name):
+    password = os.environ.get(env_name) or os.environ.get("DEFAULT_USER_PASSWORD")
+    if password:
+        return password, False
+    password = secrets.token_urlsafe(12)
+    print(f"Generated temporary password for seeded account {email}: {password}")
+    return password, True
 
 
 CATALOG = [
@@ -76,19 +77,22 @@ CATALOG_SAMPLE_TYPES = {
 
 def create_default_users():
     users = [
-        {"email": "admin@nmbhlab.com",   "password": DEFAULT_USER_PASSWORDS["admin@nmbhlab.com"],   "roles": ["admin"],          "name": "System Admin"},
-        {"email": "doctor@nmbhlab.com",  "password": DEFAULT_USER_PASSWORDS["doctor@nmbhlab.com"],  "roles": ["doctor"],         "name": "Group Doctor"},
-        {"email": "tech@nmbhlab.com",    "password": DEFAULT_USER_PASSWORDS["tech@nmbhlab.com"],    "roles": ["lab_technician"], "name": "Lab Technician"},
-        {"email": "manager@nmbhlab.com", "password": DEFAULT_USER_PASSWORDS["manager@nmbhlab.com"], "roles": ["lab_manager"],    "name": "Lab Manager"},
-        {"email": "patient@nmbhlab.com", "password": DEFAULT_USER_PASSWORDS["patient@nmbhlab.com"], "roles": ["patient"],        "name": "Jane Patient"},
+        {"email": email, "env_name": env_name, "roles": roles, "name": name}
+        for email, env_name, roles, name in DEFAULT_USER_SPECS
     ]
 
     for u in users:
         existing = User.query.filter_by(email=u["email"]).first()
         if not existing:
-            # Default seeded accounts are exempt from forced password change.
-            user = User(email=u["email"], full_name=u["name"], must_change_password=False)
-            user.set_password(u["password"])
+            password, generated = _seed_password(u["email"], u["env_name"])
+            user = User(
+                email=u["email"],
+                full_name=u["name"],
+                must_change_password=generated,
+            )
+            user.set_password(password)
+            if generated:
+                user.temp_password = password
             db.session.add(user)
             db.session.flush()
             for role in u["roles"]:
@@ -98,11 +102,6 @@ def create_default_users():
                     profile_id=user.id, mrn="MRN-" + user.id[:8],
                     full_name=u["name"], email=u["email"],
                 ))
-        else:
-            # Make sure existing seeded accounts stay exempt across upgrades.
-            if existing.must_change_password:
-                existing.must_change_password = False
-
     # Drop any legacy super_admin role rows from older databases.
     UserRole.query.filter_by(role="super_admin").delete()
 

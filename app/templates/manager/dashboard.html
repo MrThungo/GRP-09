@@ -16,7 +16,7 @@
   <a href="{{ url_for('manager.new_order') }}" class="btn-primary px-4 py-2 text-sm">New order</a>
 </div>
 
-<div class="mb-8 grid grid-cols-2 gap-4 md:grid-cols-5">
+<div class="stats-grid mb-8">
   <a href="{{ url_for('manager.orders') }}">{{ stat_card("Total Orders", total_orders, "sky") }}</a>
   <a href="{{ url_for('manager.inventory') }}">{{ stat_card("Low Stock", low_stock|length, "amber") }}</a>
   <a href="{{ url_for('manager.doctors') }}">{{ stat_card("Doctors", doctor_count, "emerald") }}</a>

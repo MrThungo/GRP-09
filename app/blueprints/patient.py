@@ -12,6 +12,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
 
+from ..consultation_recordings import has_video_recording, recording_path
 from ..extensions import db
 from ..auth_utils import role_required
 from ..models import (
@@ -322,13 +323,29 @@ def consultation_record(consultation_id):
     if not consultation.session_record_body:
         flash("No consultation record is available yet.", "error")
         return redirect(url_for("patient.consultation_detail", consultation_id=consultation.id))
-    return Response(
-        consultation.session_record_body,
-        mimetype=consultation.session_record_mime or "text/plain",
-        headers={
-            "Content-Disposition": f"attachment; filename={consultation.session_record_filename or 'consultation-record.txt'}",
-            "Content-Length": str(consultation.session_record_size or len(consultation.session_record_body.encode("utf-8"))),
-        },
+    stream_url = None
+    if has_video_recording(consultation):
+        stream_url = url_for("patient.consultation_record_video", consultation_id=consultation.id)
+    return render_template(
+        "consultations/recording.html",
+        consultation=consultation,
+        stream_url=stream_url,
+        text_record=None if stream_url else consultation.session_record_body,
+        back_url=url_for("patient.consultation_detail", consultation_id=consultation.id),
+    )
+
+
+@bp.route("/consultations/<consultation_id>/record/video")
+def consultation_record_video(consultation_id):
+    consultation = _patient_consultation_or_404(consultation_id)
+    path = recording_path(consultation)
+    if not path or not (consultation.session_record_mime or "").startswith("video/"):
+        abort(404)
+    return send_file(
+        path,
+        mimetype=consultation.session_record_mime or "video/webm",
+        as_attachment=False,
+        download_name=consultation.session_record_filename or "consultation-recording.webm",
     )
 
 

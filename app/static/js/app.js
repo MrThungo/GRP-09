@@ -1240,21 +1240,27 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     if (!wrapper.hasAttribute("aria-label")) wrapper.setAttribute("aria-label", "Scrollable table");
   }
 
-  document.querySelectorAll("main table").forEach(table => {
-    if (table.closest("[data-no-responsive-table]")) return;
-    const parent = table.parentElement;
-    if (!parent) return;
-    if (parent.classList.contains("overflow-x-auto") || parent.classList.contains("responsive-table")) {
-      enhanceWrapper(parent);
-      return;
-    }
+  function enhanceTables(root = document) {
+    const selector = root === document ? "main table" : "table";
+    root.querySelectorAll(selector).forEach(table => {
+      if (table.closest("[data-no-responsive-table]")) return;
+      const parent = table.parentElement;
+      if (!parent) return;
+      if (parent.classList.contains("overflow-x-auto") || parent.classList.contains("responsive-table")) {
+        enhanceWrapper(parent);
+        return;
+      }
 
-    const wrapper = document.createElement("div");
-    wrapper.className = "responsive-table overflow-x-auto";
-    enhanceWrapper(wrapper);
-    parent.insertBefore(wrapper, table);
-    wrapper.appendChild(table);
-  });
+      const wrapper = document.createElement("div");
+      wrapper.className = "responsive-table overflow-x-auto";
+      enhanceWrapper(wrapper);
+      parent.insertBefore(wrapper, table);
+      wrapper.appendChild(table);
+    });
+  }
+
+  window.enhanceResponsiveTables = enhanceTables;
+  enhanceTables(document);
 })();
 
 // --- Client-side table pagination ---
@@ -1434,6 +1440,8 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     if (state) state.refresh(options);
   };
 
+  window.initTablePagination = initTablePagination;
+
   window.refreshAllTablePagination = function (options = {}) {
     paginatedTables.forEach(state => state.refresh(options));
   };
@@ -1445,6 +1453,155 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   schedulePagination(() => {
     document.querySelectorAll("main table").forEach(initTablePagination);
   });
+})();
+
+// --- Live page updates without full refresh ---
+(function () {
+  const region = document.querySelector("[data-live-page-region]");
+  const snapshotUrl = region?.dataset.liveSnapshotUrl;
+  if (!region || !snapshotUrl || !("fetch" in window) || !("DOMParser" in window)) return;
+
+  const POLL_MS = 6000;
+  const RETRY_MS = 15000;
+  let lastVersion = "";
+  let polling = false;
+  let refreshing = false;
+  let timer = null;
+  let lastUserEditAt = 0;
+
+  function schedule(delay = POLL_MS) {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(tick, delay);
+  }
+
+  function isEditable(element) {
+    if (!element) return false;
+    return Boolean(element.closest("input, textarea, select, [contenteditable='true']"));
+  }
+
+  function shouldPauseLiveSwap() {
+    if (document.hidden) return true;
+    if (document.querySelector("[data-consultation-room], [data-consultation-waiting]")) return true;
+    if (document.querySelector("[data-floating-chatbot-panel][aria-hidden='false']")) return true;
+    if (document.body.classList.contains("confirm-modal-open")) return true;
+    if (isEditable(document.activeElement)) return true;
+    if (Date.now() - lastUserEditAt < 12000) return true;
+    if (document.querySelector("form[data-live-lock], form[data-submitting='1']")) return true;
+    return false;
+  }
+
+  function executeInlineScripts(container) {
+    container.querySelectorAll("script").forEach(oldScript => {
+      const script = document.createElement("script");
+      Array.from(oldScript.attributes).forEach(attr => {
+        script.setAttribute(attr.name, attr.value);
+      });
+      script.textContent = oldScript.textContent;
+      oldScript.replaceWith(script);
+    });
+  }
+
+  function updateShellFrom(nextDocument) {
+    const nextTitle = nextDocument.querySelector("title");
+    if (nextTitle) document.title = nextTitle.textContent;
+
+    const currentPageTitle = document.querySelector(".app-page-title");
+    const nextPageTitle = nextDocument.querySelector(".app-page-title");
+    if (currentPageTitle && nextPageTitle) {
+      currentPageTitle.innerHTML = nextPageTitle.innerHTML;
+    }
+  }
+
+  function rerunEnhancements() {
+    if (typeof window.enhanceResponsiveTables === "function") {
+      window.enhanceResponsiveTables(region);
+    }
+    if (typeof window.initTablePagination === "function") {
+      region.querySelectorAll("table").forEach(table => window.initTablePagination(table));
+    }
+    if (typeof window.refreshAllTablePagination === "function") {
+      window.refreshAllTablePagination({ preservePage: true });
+    }
+    if (typeof window.normalizeResponsiveCharts === "function") {
+      window.setTimeout(window.normalizeResponsiveCharts, 40);
+    }
+  }
+
+  async function refreshCurrentPage() {
+    if (refreshing || shouldPauseLiveSwap()) return false;
+    refreshing = true;
+    try {
+      const response = await fetch(window.location.href, {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          Accept: "text/html,application/xhtml+xml",
+          "X-Live-Refresh": "1",
+        },
+      });
+      const contentType = response.headers.get("content-type") || "";
+      if (!response.ok || !contentType.includes("text/html")) return false;
+      const html = await response.text();
+      const nextDocument = new DOMParser().parseFromString(html, "text/html");
+      const nextRegion = nextDocument.querySelector("[data-live-page-region]");
+      if (!nextRegion) return false;
+
+      const scrollY = window.scrollY;
+      updateShellFrom(nextDocument);
+      region.innerHTML = nextRegion.innerHTML;
+      executeInlineScripts(region);
+      rerunEnhancements();
+      window.scrollTo(window.scrollX, scrollY);
+      document.dispatchEvent(new CustomEvent("nmb:live-page-updated", { detail: { url: window.location.href } }));
+      return true;
+    } catch (error) {
+      return false;
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  async function tick() {
+    if (polling) return;
+    polling = true;
+    try {
+      const response = await fetch(snapshotUrl, {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      if (response.status === 401 || response.status === 403) return;
+      if (!response.ok) throw new Error("Live snapshot failed");
+      const data = await response.json();
+      document.dispatchEvent(new CustomEvent("nmb:live-snapshot", { detail: data }));
+      if (!lastVersion) {
+        lastVersion = data.version || "";
+      } else if (data.version && data.version !== lastVersion) {
+        const updated = await refreshCurrentPage();
+        if (updated) lastVersion = data.version;
+      }
+      schedule(POLL_MS);
+    } catch (error) {
+      schedule(RETRY_MS);
+    } finally {
+      polling = false;
+    }
+  }
+
+  document.addEventListener("input", event => {
+    if (isEditable(event.target)) lastUserEditAt = Date.now();
+  }, true);
+  document.addEventListener("change", event => {
+    if (isEditable(event.target)) lastUserEditAt = Date.now();
+  }, true);
+  document.addEventListener("submit", () => {
+    lastUserEditAt = Date.now();
+  }, true);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) schedule(200);
+  });
+
+  schedule(350);
 })();
 
 // --- Capture form: live abnormal-flag preview ---

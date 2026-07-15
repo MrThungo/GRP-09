@@ -18,27 +18,22 @@
       {% endfor %}
     {% endwith %}
 
+    {% if QUICK_LOGIN_ACCOUNTS %}
     <div class="mt-6 rounded-lg border border-slate-800 bg-slate-950 p-4">
       <div class="mb-3">
         <div class="text-sm font-semibold text-white">Quick sign in</div>
-        <div class="text-xs text-slate-500">Use a seeded role account.</div>
+        <div class="text-xs text-slate-500">Testing shortcut for seeded local accounts.</div>
       </div>
       <div class="grid grid-cols-2 gap-2">
-        {% for demo in [
-          ('Patient', 'patient@nmbhlab.com', 'Patient@123', ''),
-          ('Doctor', 'doctor@nmbhlab.com', 'Doctor@123', ''),
-          ('Lab Technician', 'tech@nmbhlab.com', 'Tech@123', ''),
-          ('Lab Manager', 'manager@nmbhlab.com', 'Manager@123', ''),
-          ('Admin', 'admin@nmbhlab.com', 'Admin@123', 'col-span-2')
-        ] %}
-          <form method="post" class="{{ demo[3] }}">
-            <input type="hidden" name="email" value="{{ demo[1] }}">
-            <input type="hidden" name="password" value="{{ demo[2] }}">
-            <button type="submit" class="btn-secondary w-full px-3 py-2 text-xs">{{ demo[0] }}</button>
+        {% for demo in QUICK_LOGIN_ACCOUNTS %}
+          <form method="post" class="{% if demo.wide %}col-span-2{% endif %}">
+            <input type="hidden" name="quick_login" value="{{ demo.key }}">
+            <button type="submit" class="btn-secondary w-full px-3 py-2 text-xs">{{ demo.label }}</button>
           </form>
         {% endfor %}
       </div>
     </div>
+    {% endif %}
 
     <form method="post" class="mt-6 space-y-4">
       <div>

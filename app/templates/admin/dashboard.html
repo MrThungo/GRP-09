@@ -16,7 +16,7 @@
   <a href="{{ url_for('admin.users') }}" class="btn-primary px-4 py-2 text-sm">Manage users</a>
 </div>
 
-<div class="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+<div class="stats-grid mb-6">
   <a href="{{ url_for('admin.users') }}">{{ stat_card("Users", user_count, "sky") }}</a>
   <a href="{{ url_for('admin.users') }}">{{ stat_card("Blocked", blocked_count, "rose") }}</a>
   <a href="{{ url_for('admin.patients') }}">{{ stat_card("Patients", patient_count, "emerald") }}</a>

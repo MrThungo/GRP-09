@@ -128,7 +128,8 @@ def _assigned_test_ids():
     }
 
 def _all_samples_received(req):
-    return bool(req.samples) and all(sample.status == "received" for sample in req.samples)
+    active_samples = [sample for sample in req.samples if sample.status != "rejected"]
+    return bool(active_samples) and all(sample.status == "received" for sample in active_samples)
 
 def _can_perform(test_id):
     return test_id in _assigned_test_ids()
@@ -182,30 +183,105 @@ def _technician_can_access_request(req):
 
 
 def _refresh_request_after_sample_receipt(req):
-    if req.status == "submitted" and req.samples and all(sample.status == "received" for sample in req.samples):
+    if req.status == "submitted" and _all_samples_received(req):
         req.status = "samples_received"
 
 
-def _notify_doctor_of_sample_issue(req, reason):
+def _active_request_items(req):
+    return [item for item in req.items if item.status != "cancelled"]
+
+
+def _items_affected_by_sample(sample):
+    sample_type = (sample.sample_type or "").strip().casefold()
+    if not sample_type:
+        return []
+    return [
+        item for item in sample.request.items
+        if item.status not in ("cancelled", "completed", "verified")
+        and (item.test.sample_type or "").strip().casefold() == sample_type
+    ]
+
+
+def _reject_request_item(item, reason):
+    item.status = "cancelled"
+    item.result_value = None
+    item.result_text = None
+    item.result_notes = None
+    item.abnormal_flag = None
+    item.near_limit_reminded_at = None
+    item.review_notes = f"Rejected by laboratory: {reason}"
+    db.session.add(TestResultReview(
+        item_id=item.id,
+        reviewer_id=current_user.id,
+        action="rejected",
+        note=reason,
+    ))
+
+
+def _refresh_request_after_item_change(req, cancel_reason=None):
+    active_items = _active_request_items(req)
+    if not active_items:
+        req.status = "cancelled"
+        req.cancel_reason = cancel_reason or "All tests on this request were rejected by the laboratory."
+        req.cancelled_by = current_user.id
+        req.cancelled_at = datetime.now()
+        return True
+    if req.status in ("cancelled", "released"):
+        return req.status == "cancelled"
+    if all(item.status in ("completed", "verified") for item in active_items):
+        req.status = "completed"
+    elif any(item.status in ("in_progress", "completed", "verified", "to_be_reviewed") for item in active_items):
+        req.status = "in_progress"
+    elif all(_required_sample_received(item) for item in active_items):
+        req.status = "samples_received"
+    else:
+        req.status = "submitted"
+    return False
+
+
+def _notify_doctor_of_sample_issue(req, reason, affected_items=None, cancelled_request=False):
     if not req.doctor_id:
         return
+    affected_items = affected_items or []
+    test_names = ", ".join(item.test.name for item in affected_items if item.test)
+    affected_text = test_names or "the affected sample"
+    if cancelled_request:
+        notice_body = (
+            f"Request {req.request_number} was cancelled because all active tests "
+            f"were rejected by the laboratory: {reason}"
+        )
+        email_body = (
+            f"Hello Dr. {req.doctor.full_name or req.doctor.email},\n\n"
+            f"Laboratory request {req.request_number} has been cancelled because all active tests were rejected.\n\n"
+            f"Affected: {affected_text}\n"
+            f"Reason: {reason}\n\n"
+            "Please review the request and arrange recollection if required.\n\n"
+            "- NMB-HLab"
+        )
+    else:
+        notice_body = (
+            f"{affected_text} on request {req.request_number} was rejected by the laboratory: {reason}. "
+            "Other tests on the request remain active."
+        )
+        email_body = (
+            f"Hello Dr. {req.doctor.full_name or req.doctor.email},\n\n"
+            f"A laboratory issue was recorded on request {req.request_number}.\n\n"
+            f"Affected: {affected_text}\n"
+            f"Reason: {reason}\n\n"
+            "Only the affected test or sample was rejected. Any other active tests on this request remain in progress.\n\n"
+            "- NMB-HLab"
+        )
     notify(
         req.doctor_id,
-        "Sample rejected by laboratory",
-        f"Request {req.request_number} was cancelled because a sample was rejected: {reason}",
+        "Laboratory rejection recorded",
+        notice_body,
         f"/doctor/requests/{req.id}",
     )
     if req.doctor and req.doctor.email:
         send_email(
             [req.doctor.email],
-            f"NMB-HLab sample rejected: {req.request_number}",
-            (
-                f"Hello Dr. {req.doctor.full_name or req.doctor.email},\n\n"
-                f"Laboratory request {req.request_number} has been cancelled because a submitted sample was rejected.\n\n"
-                f"Reason: {reason}\n\n"
-                "Please review the request and arrange recollection if required.\n\n"
-                "- NMB-HLab"
-            ),
+            f"NMB-HLab laboratory rejection: {req.request_number}",
+            email_body,
         )
 
 @bp.route("/")
@@ -506,18 +582,25 @@ def receive_samples(request_id):
         abort(404)
     if not _technician_can_access_request(req):
         abort(403)
+    if req.status in ("cancelled", "released"):
+        flash("Samples cannot be updated for a closed request.", "error")
+        return redirect(url_for("technician.capture", request_id=req.id))
     if not req.samples:
         flash("This request has no recorded samples to receive.", "error")
         return redirect(url_for("technician.capture", request_id=req.id))
-    if any(sample.status == "rejected" for sample in req.samples):
-        flash("Rejected samples cannot be received. The request has been stopped for recollection.", "error")
-        return redirect(url_for("technician.capture", request_id=req.id))
 
     now = datetime.now()
+    updated = 0
     for sample in req.samples:
+        if sample.status == "rejected":
+            continue
         sample.status = "received"
         sample.received_by = current_user.id
         sample.received_at = now
+        updated += 1
+    if not updated:
+        flash("There are no active samples to receive.", "error")
+        return redirect(url_for("technician.capture", request_id=req.id))
     _refresh_request_after_sample_receipt(req)
     log_audit(current_user.id, "receive_samples", "test_request", req.id)
     db.session.commit()
@@ -569,16 +652,28 @@ def reject_sample(sample_id):
     sample.rejected_by = current_user.id
     sample.rejected_at = now
     sample.rejection_reason = reason
-    req.status = "cancelled"
-    req.cancel_reason = f"Sample {sample.barcode} rejected: {reason}"
-    req.cancelled_by = current_user.id
-    req.cancelled_at = now
-    _notify_doctor_of_sample_issue(req, reason)
+    affected_items = _items_affected_by_sample(sample)
+    item_reason = f"Sample {sample.barcode} rejected: {reason}"
+    for item in affected_items:
+        _reject_request_item(item, item_reason)
+    cancelled_request = _refresh_request_after_item_change(req, item_reason)
+    _notify_doctor_of_sample_issue(req, reason, affected_items, cancelled_request)
     log_audit(current_user.id, "reject_sample", "sample", sample.id,
-              {"reason": reason, "request_id": req.id})
+              {
+                  "reason": reason,
+                  "request_id": req.id,
+                  "affected_item_ids": [item.id for item in affected_items],
+                  "cancelled_request": cancelled_request,
+              })
     db.session.commit()
-    flash("Sample rejected and the doctor was notified.", "success")
-    return redirect(url_for("technician.dashboard"))
+    if cancelled_request:
+        flash("Sample rejected. All active tests were affected, so the request was cancelled.", "success")
+        return redirect(url_for("technician.dashboard"))
+    if affected_items:
+        flash("Sample rejected. Only the affected test(s) were stopped; the rest of the request remains active.", "success")
+    else:
+        flash("Sample rejected and the doctor was notified. No active test matched this sample type.", "success")
+    return redirect(url_for("technician.capture", request_id=req.id))
 
 
 @bp.route("/requests/<request_id>/cancel", methods=["POST"])
@@ -635,8 +730,8 @@ def select_item(item_id):
     if item.request.status not in ("samples_received", "in_progress"):
         flash("Samples must be received before selecting a test.", "error")
         return redirect(url_for("technician.capture", request_id=item.request_id))
-    if not item.request.samples or any(sample.status != "received" for sample in item.request.samples):
-        flash("All recorded samples must be received before selecting a test.", "error")
+    if not _required_sample_received(item):
+        flash("The required sample for this test must be received before selecting it.", "error")
         return redirect(url_for("technician.capture", request_id=item.request_id))
     if item.assigned_to and item.assigned_to != current_user.id:
         flash("This test has already been selected by another technician.", "error")
@@ -672,6 +767,49 @@ def select_item(item_id):
     db.session.commit()
     flash(f"{item.test.name} selected. Consumables were deducted from stock.", "success")
     return redirect(url_for("technician.capture", request_id=item.request_id))
+
+
+@bp.route("/items/<item_id>/reject", methods=["POST"])
+def reject_item(item_id):
+    item = db.session.get(TestRequestItem, item_id)
+    if not item:
+        abort(404)
+    if not _can_perform(item.test_id):
+        abort(403)
+    req = item.request
+    if req.status in ("cancelled", "released"):
+        flash("Tests cannot be rejected for a closed request.", "error")
+        return redirect(url_for("technician.capture", request_id=req.id))
+    if item.status in ("completed", "verified", "cancelled"):
+        flash("Only active, unreleased tests can be rejected.", "error")
+        return redirect(url_for("technician.capture", request_id=req.id))
+    if item.assigned_to and item.assigned_to != current_user.id:
+        flash("This test has already been selected by another technician.", "error")
+        return redirect(url_for("technician.capture", request_id=req.id))
+    reason = (
+        request.form.get(f"reject_reason_{item.id}")
+        or request.form.get("reason")
+        or ""
+    ).strip()
+    if not reason:
+        flash("A rejection reason is required.", "error")
+        return redirect(url_for("technician.capture", request_id=req.id))
+
+    _reject_request_item(item, reason)
+    cancelled_request = _refresh_request_after_item_change(req, f"Test rejected: {reason}")
+    _notify_doctor_of_sample_issue(req, reason, [item], cancelled_request)
+    log_audit(current_user.id, "technician_reject_test_item", "test_request_item", item.id,
+              {
+                  "reason": reason,
+                  "request_id": req.id,
+                  "cancelled_request": cancelled_request,
+              })
+    db.session.commit()
+    if cancelled_request:
+        flash("Test rejected. No active tests remain, so the request was cancelled.", "success")
+        return redirect(url_for("technician.dashboard"))
+    flash("Test rejected. The other tests on this request remain active.", "success")
+    return redirect(url_for("technician.capture", request_id=req.id))
 
 
 @bp.route("/capture/<request_id>", methods=["GET", "POST"])
@@ -754,9 +892,10 @@ def capture(request_id):
             )
             return redirect(url_for("technician.capture", request_id=req.id))
         if action == "complete":
+            active_items = _active_request_items(req)
             req.status = (
                 "completed"
-                if all(item.status in ("completed", "verified") for item in req.items)
+                if active_items and all(item.status in ("completed", "verified") for item in active_items)
                 else "in_progress"
             )
             log_audit(current_user.id, "capture_results", "test_request", req.id)

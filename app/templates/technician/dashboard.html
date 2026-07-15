@@ -14,7 +14,7 @@
     <h1 class="section-title mt-2 text-3xl">Technician Dashboard</h1>
     <p class="mt-2 text-sm text-slate-400">Track assigned tests, sample receipt, verification queues and priority work.</p>
   </div>
-  <div class="grid grid-cols-1 gap-4 md:grid-cols-3 xl:grid-cols-9">
+  <div class="stats-grid">
     <a href="{{ url_for('technician.worklist', filter_type='receipt') }}">{{ stat_card("Sample Receipt", receipt_count, "emerald") }}</a>
     <a href="{{ url_for('technician.worklist', filter_type='selected') }}">{{ stat_card("Selected Tests", assigned_count, "sky") }}</a>
     <a href="{{ url_for('technician.worklist', filter_type='waiting') }}">{{ stat_card("Waiting Selection", waiting_count, "sky") }}</a>

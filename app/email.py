@@ -1,9 +1,11 @@
 """Shared email/SMS helpers."""
+import os
 import smtplib
 import ssl
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import parseaddr
 from html import escape
 
 from flask import current_app, has_app_context
@@ -11,11 +13,6 @@ from flask import current_app, has_app_context
 
 BRAND_NAME = "NMB-HLab"
 EMAIL_SIGNATURE = "Kind Regards\nManagement"
-EMAIL = "LabLink718@gmail.com"
-PASSWORD = "seul zmgw wbta eauw"
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_SSL_PORT = 465
-SMTP_TLS_PORT = 587
 SMTP_TIMEOUT = 30
 
 
@@ -37,6 +34,43 @@ def _app_url(path="/"):
     if not base:
         return path
     return f"{base}/{path.lstrip('/')}"
+
+
+def _env_bool(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _smtp_settings():
+    if has_app_context():
+        config = current_app.config
+        return {
+            "server": config.get("MAIL_SERVER") or "localhost",
+            "port": int(config.get("MAIL_PORT") or 25),
+            "username": config.get("MAIL_USERNAME") or "",
+            "password": config.get("MAIL_PASSWORD") or "",
+            "use_tls": bool(config.get("MAIL_USE_TLS")),
+            "use_ssl": bool(config.get("MAIL_USE_SSL")),
+            "sender": config.get("MAIL_DEFAULT_SENDER") or config.get("MAIL_USERNAME") or "no-reply@nmbhlab.local",
+        }
+    return {
+        "server": os.environ.get("MAIL_SERVER", "localhost"),
+        "port": int(os.environ.get("MAIL_PORT", "25")),
+        "username": os.environ.get("MAIL_USERNAME", ""),
+        "password": os.environ.get("MAIL_PASSWORD", ""),
+        "use_tls": _env_bool("MAIL_USE_TLS", False),
+        "use_ssl": _env_bool("MAIL_USE_SSL", False),
+        "sender": os.environ.get("MAIL_DEFAULT_SENDER") or os.environ.get("MAIL_USERNAME") or "no-reply@nmbhlab.local",
+    }
+
+
+def _sender_headers(settings):
+    sender = (settings.get("sender") or "").strip() or "no-reply@nmbhlab.local"
+    sender_address = parseaddr(sender)[1] or sender
+    from_header = sender if "<" in sender else f"{BRAND_NAME} <{sender_address}>"
+    return from_header, sender_address
 
 
 def _normalise_signature(body):
@@ -159,19 +193,23 @@ def _html_from_text(subject, body):
 
 
 def send_email(recipients, subject, body, html=None, attachments=None):
-    """Send email using the hard-coded Gmail SMTP flow from the working project."""
+    """Send email using SMTP settings supplied by the environment/app config."""
     recipients = _clean_recipients(recipients)
     if not recipients:
         return False
     body = _normalise_signature(body)
+    settings = _smtp_settings()
+    from_header, sender_address = _sender_headers(settings)
+    username = settings["username"]
+    password = settings["password"]
 
     try:
         msg = MIMEMultipart("mixed" if attachments else "alternative")
         msg["Subject"] = subject
-        msg["From"] = f"{BRAND_NAME} <{EMAIL}>"
+        msg["From"] = from_header
         msg["To"] = ", ".join(recipients)
-        msg["Reply-To"] = EMAIL
-        msg["List-Unsubscribe"] = f"<mailto:{EMAIL}>"
+        msg["Reply-To"] = sender_address
+        msg["List-Unsubscribe"] = f"<mailto:{sender_address}>"
         if html is None:
             html = _html_from_text(subject, body)
 
@@ -195,24 +233,34 @@ def send_email(recipients, subject, body, html=None, attachments=None):
         context = ssl.create_default_context()
         message = msg.as_string()
         errors = []
-        for method in ("ssl", "starttls"):
+        methods = []
+        if settings["use_ssl"]:
+            methods.append("ssl")
+        if settings["use_tls"]:
+            methods.append("starttls")
+        if not methods:
+            methods.append("plain")
+        for method in methods:
             try:
                 if method == "ssl":
                     with smtplib.SMTP_SSL(
-                        SMTP_SERVER,
-                        SMTP_SSL_PORT,
+                        settings["server"],
+                        settings["port"],
                         timeout=SMTP_TIMEOUT,
                         context=context,
                     ) as smtp:
-                        smtp.login(user=EMAIL, password=PASSWORD)
-                        refused = smtp.sendmail(from_addr=EMAIL, to_addrs=recipients, msg=message)
+                        if username and password:
+                            smtp.login(user=username, password=password)
+                        refused = smtp.sendmail(from_addr=sender_address, to_addrs=recipients, msg=message)
                 else:
-                    with smtplib.SMTP(SMTP_SERVER, SMTP_TLS_PORT, timeout=SMTP_TIMEOUT) as smtp:
+                    with smtplib.SMTP(settings["server"], settings["port"], timeout=SMTP_TIMEOUT) as smtp:
                         smtp.ehlo()
-                        smtp.starttls(context=context)
-                        smtp.ehlo()
-                        smtp.login(user=EMAIL, password=PASSWORD)
-                        refused = smtp.sendmail(from_addr=EMAIL, to_addrs=recipients, msg=message)
+                        if method == "starttls":
+                            smtp.starttls(context=context)
+                            smtp.ehlo()
+                        if username and password:
+                            smtp.login(user=username, password=password)
+                        refused = smtp.sendmail(from_addr=sender_address, to_addrs=recipients, msg=message)
                 if refused:
                     raise smtplib.SMTPRecipientsRefused(refused)
                 return True

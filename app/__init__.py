@@ -1,5 +1,6 @@
 """Application factory."""
 import os
+import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, redirect, url_for, request, jsonify, flash
@@ -23,10 +24,23 @@ mail = Mail()
 
 def _load_environment_files():
     """Load local environment files, including the project's env.txt."""
+    def fallback_values(path):
+        values = {}
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip().strip('"').strip("'")
+        except OSError:
+            return values
+        return values
+
     try:
         from dotenv import dotenv_values
     except ImportError:
-        return
+        dotenv_values = fallback_values
 
     project_root = Path(__file__).resolve().parent.parent
     placeholder_values = {
@@ -240,7 +254,14 @@ def create_app():
     _load_environment_files()
 
     app = Flask(__name__, static_folder="static", template_folder="templates")
-    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "6357816b669fabdc4cbc")
+    secret_key = os.environ.get("SECRET_KEY")
+    if not secret_key:
+        secret_key = secrets.token_hex(32)
+        app.logger.warning(
+            "SECRET_KEY is not set; using an ephemeral development key. "
+            "Set SECRET_KEY in env.txt or the server environment before publishing."
+        )
+    app.config["SECRET_KEY"] = secret_key
     app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///nmb.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["PRESENCE_WRITE_INTERVAL_SECONDS"] = int(
@@ -271,6 +292,8 @@ def create_app():
         "MAIL_DEFAULT_SENDER", "no-reply@nmbhlab.local"
     )
     app.config["APP_BASE_URL"] = os.environ.get("APP_BASE_URL", "")
+    is_sqlite = app.config["SQLALCHEMY_DATABASE_URI"].lower().startswith("sqlite")
+    app.config["ENABLE_QUICK_LOGIN"] = _env_bool("ENABLE_QUICK_LOGIN", is_sqlite)
     # Password-reset token lifetime: 5 minutes
     app.config["PASSWORD_RESET_MAX_AGE_SECONDS"] = 300
 
@@ -399,10 +422,8 @@ def create_app():
     app.register_blueprint(chatbot_bp, url_prefix="/chatbot")
 
     from .avatar_utils import render_avatar, initials_for
-    from .DefaultUsers import DEFAULT_USER_EMAILS
     app.jinja_env.globals["render_avatar"] = render_avatar
     app.jinja_env.globals["initials_for"] = initials_for
-    app.jinja_env.globals["DEFAULT_USER_EMAILS"] = DEFAULT_USER_EMAILS
 
     @app.before_request
     def _global_guard():

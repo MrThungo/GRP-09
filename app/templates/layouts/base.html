@@ -186,7 +186,9 @@
       </div>
     </header>
 
-    <div class="page-container mx-auto w-full flex-1 px-4 py-5 sm:px-6 lg:px-8">
+    <div class="page-container mx-auto w-full flex-1 px-4 py-5 sm:px-6 lg:px-8"
+         data-live-page-region
+         data-live-snapshot-url="{{ url_for('api.live_snapshot') }}">
       <div data-js-flash-region>
         {% for cat, msg in flashed_messages %}
           <div class="flash-message mb-4
@@ -290,11 +292,9 @@
 </div>
 
 {# Force-password-change overlay: cannot be dismissed until password is changed.
-   Skipped for the seeded default accounts (DEFAULT_USER_EMAILS) and on the
-   change-password page itself so the user can submit the form. #}
+   Skipped on logout/static endpoints only so the user can submit the form. #}
 {% if current_user.is_authenticated
       and current_user.must_change_password
-      and current_user.email not in DEFAULT_USER_EMAILS
       and request.endpoint not in ('auth.logout', 'static') %}
 <div class="forced-password-modal-backdrop"
      onclick="event.stopPropagation();" oncontextmenu="return false;">

@@ -14,7 +14,7 @@
   <a href="{{ url_for('technician.reports', **{'from': frm, 'to': to, 'format': 'pdf'}) }}"
      class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm">Download PDF</a>
 </form>
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+<div class="stats-grid mb-6">
   {{ stat_card("Tests captured", captured) }}
   {{ stat_card("Tests verified", verified) }}
   {{ stat_card("Abnormal flagged", abnormal) }}

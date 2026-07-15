@@ -8,6 +8,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
 
+from ..consultation_recordings import has_video_recording, recording_path
 from ..extensions import db
 from ..auth_utils import role_required
 from ..models import (
@@ -39,7 +40,6 @@ from ..whatsapp import send_account_welcome_whatsapp
 bp = Blueprint("doctor", __name__, template_folder="../templates/doctor")
 
 ALLOWED_AVATAR_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-CONSULTATION_RECORD_LIMIT_BYTES = 1_000_000
 
 
 @bp.before_request
@@ -422,6 +422,9 @@ def _parse_datetime_local(value):
 
 
 def _store_consultation_record(consultation):
+    if has_video_recording(consultation):
+        return
+
     ended_at = consultation.ended_at or datetime.now()
     started_at = consultation.doctor_started_at or ended_at
     duration_minutes = max(0, int((ended_at - started_at).total_seconds() // 60))
@@ -436,14 +439,10 @@ def _store_consultation_record(consultation):
         f"Ended: {ended_at.strftime('%Y-%m-%d %H:%M:%S')}",
         f"Duration minutes: {duration_minutes}",
         "",
-        "Storage policy: Live video and audio are not archived by this portal.",
-        "This compact session record is intentionally kept below 1 MB, including sessions longer than one hour.",
+        "Storage policy: A playable video is shown when the browser recording was saved.",
+        "This text record is kept only as a fallback for sessions without a saved video.",
     ]
     body = "\n".join(lines) + "\n"
-    encoded = body.encode("utf-8")
-    if len(encoded) >= CONSULTATION_RECORD_LIMIT_BYTES:
-        encoded = encoded[:CONSULTATION_RECORD_LIMIT_BYTES - 1]
-        body = encoded.decode("utf-8", errors="ignore")
     consultation.session_record_filename = f"consultation-{consultation.id}.txt"
     consultation.session_record_mime = "text/plain"
     consultation.session_record_size = len(body.encode("utf-8"))
@@ -618,13 +617,29 @@ def consultation_record(consultation_id):
     if not consultation.session_record_body:
         flash("No consultation record is available yet.", "error")
         return redirect(url_for("doctor.consultations"))
-    return Response(
-        consultation.session_record_body,
-        mimetype=consultation.session_record_mime or "text/plain",
-        headers={
-            "Content-Disposition": f"attachment; filename={consultation.session_record_filename or 'consultation-record.txt'}",
-            "Content-Length": str(consultation.session_record_size or len(consultation.session_record_body.encode("utf-8"))),
-        },
+    stream_url = None
+    if has_video_recording(consultation):
+        stream_url = url_for("doctor.consultation_record_video", consultation_id=consultation.id)
+    return render_template(
+        "consultations/recording.html",
+        consultation=consultation,
+        stream_url=stream_url,
+        text_record=None if stream_url else consultation.session_record_body,
+        back_url=url_for("doctor.consultations"),
+    )
+
+
+@bp.route("/consultations/<consultation_id>/record/video")
+def consultation_record_video(consultation_id):
+    consultation = _doctor_consultation_or_404(consultation_id)
+    path = recording_path(consultation)
+    if not path or not (consultation.session_record_mime or "").startswith("video/"):
+        abort(404)
+    return send_file(
+        path,
+        mimetype=consultation.session_record_mime or "video/webm",
+        as_attachment=False,
+        download_name=consultation.session_record_filename or "consultation-recording.webm",
     )
 
 

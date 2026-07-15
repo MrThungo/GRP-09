@@ -7,6 +7,7 @@
          data-started="{{ '1' if consultation.status == 'started' else '0' }}"
          data-status-url="{{ url_for('api.consultation_status', consultation_id=consultation.id, room_token=consultation.room_token) }}"
          data-signals-url="{{ url_for('api.consultation_signals', consultation_id=consultation.id, room_token=consultation.room_token) }}"
+         data-recording-url="{{ url_for('api.consultation_recording', consultation_id=consultation.id, room_token=consultation.room_token) if role == 'doctor' else '' }}"
          {% if role == 'doctor' %}
          data-start-url="{{ url_for('doctor.start_consultation', consultation_id=consultation.id) }}"
          {% endif %}>
@@ -27,17 +28,31 @@
         <button type="button" class="btn-primary px-3 py-2 text-sm" data-consultation-start>Start session</button>
       {% endif %}
       {% if role == 'doctor' %}
-        <form method="post" action="{{ url_for('doctor.end_consultation', consultation_id=consultation.id) }}">
+        <form method="post" action="{{ url_for('doctor.end_consultation', consultation_id=consultation.id) }}"
+              data-consultation-end-form>
           <button class="btn-secondary px-3 py-2 text-sm" type="submit">End</button>
         </form>
       {% endif %}
     </div>
   </div>
 
+  {% if role == 'doctor' %}
+  <section class="consult-waiting-roster" data-consultation-waiting-panel>
+    <div>
+      <p class="section-kicker">Waiting room</p>
+      <h2 data-consultation-waiting-count>Checking who is waiting...</h2>
+    </div>
+    <ul data-consultation-waiting-list></ul>
+    <p data-consultation-waiting-empty class="text-sm text-slate-400">
+      No patient is checked in yet.
+    </p>
+  </section>
+  {% endif %}
+
   <div class="consult-video-grid">
     <div class="consult-video-tile consult-video-remote">
       <video data-consultation-remote autoplay playsinline></video>
-      <div class="consult-video-label">Remote participant</div>
+      <div class="consult-video-label">{{ 'Patient' if role == 'doctor' else 'Doctor' }}</div>
       <div class="consult-video-empty" data-consultation-remote-empty>
         Waiting for the other participant to connect
       </div>
@@ -49,8 +64,37 @@
   </div>
 
   <div class="consult-controls">
-    <button type="button" data-consultation-mic class="btn-secondary px-3 py-2 text-sm">Mute mic</button>
-    <button type="button" data-consultation-camera class="btn-secondary px-3 py-2 text-sm">Camera off</button>
+    <div class="consult-media-controls" aria-label="Media controls">
+      <button type="button" data-consultation-mic class="consult-icon-button" aria-label="Mute microphone" title="Mute microphone">
+        <svg data-icon-on viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+          <path d="M12 19v3"></path>
+          <path d="M8 22h8"></path>
+        </svg>
+        <svg data-icon-off viewBox="0 0 24 24" aria-hidden="true" hidden>
+          <path d="m2 2 20 20"></path>
+          <path d="M9 9v3a3 3 0 0 0 5.12 2.12"></path>
+          <path d="M15 9.34V5a3 3 0 0 0-5.94-.6"></path>
+          <path d="M17 16.95A7 7 0 0 1 5 12v-2"></path>
+          <path d="M19 10v2a7 7 0 0 1-.11 1.23"></path>
+          <path d="M12 19v3"></path>
+          <path d="M8 22h8"></path>
+        </svg>
+      </button>
+      <button type="button" data-consultation-camera class="consult-icon-button" aria-label="Turn camera off" title="Turn camera off">
+        <svg data-icon-on viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m16 13 5.22 3.48a.5.5 0 0 0 .78-.42V7.94a.5.5 0 0 0-.78-.42L16 11"></path>
+          <rect x="2" y="6" width="14" height="12" rx="2"></rect>
+        </svg>
+        <svg data-icon-off viewBox="0 0 24 24" aria-hidden="true" hidden>
+          <path d="m2 2 20 20"></path>
+          <path d="M10.66 6H14a2 2 0 0 1 2 2v3.34"></path>
+          <path d="M16 16v.01A2 2 0 0 1 14 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h.01"></path>
+          <path d="m16 13 5.22 3.48a.5.5 0 0 0 .78-.42V7.94a.5.5 0 0 0-.78-.42L18 9.66"></path>
+        </svg>
+      </button>
+    </div>
     <div class="consult-status" data-consultation-status>
       {% if consultation.status == 'started' %}
         Preparing secure video session...

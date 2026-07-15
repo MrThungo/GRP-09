@@ -44,7 +44,7 @@ REQUEST_STATUSES = (
 
 
 PRIORITIES = ("routine", "urgent", "stat")
-ITEM_STATUSES = ("submitted", "in_progress", "completed", "verified", "to_be_reviewed")
+ITEM_STATUSES = ("submitted", "in_progress", "completed", "verified", "to_be_reviewed", "cancelled")
 STOCK_MOVEMENT_TYPES = ("in", "out", "adjustment")
 CONSULTATION_STATUSES = (
     "offered",
@@ -316,12 +316,18 @@ class TestRequest(db.Model):
 
 
     @property
+    def active_items(self):
+        return [item for item in self.items if item.status != "cancelled"]
+
+    @property
     def is_complete(self):
-        return bool(self.items) and all(item.status in ("completed", "verified") for item in self.items)
+        items = self.active_items
+        return bool(items) and all(item.status in ("completed", "verified") for item in items)
 
     @property
     def all_verified(self):
-        return bool(self.items) and all(item.status == "verified" for item in self.items)
+        items = self.active_items
+        return bool(items) and all(item.status == "verified" for item in items)
 
     @staticmethod
     def generate_number():
