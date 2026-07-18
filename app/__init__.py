@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, redirect, url_for, request, jsonify, flash, g
+from flask.cli import with_appcontext
 from flask_login import LoginManager, current_user, logout_user
 from flask_migrate import Migrate
 from flask_mail import Mail
@@ -148,6 +149,8 @@ def _ensure_columns(app):
             ("session_record_mime", "session_record_mime VARCHAR(80)"),
             ("session_record_size", "session_record_size INTEGER"),
             ("session_record_body", "session_record_body TEXT"),
+            ("session_record_expires_at", "session_record_expires_at DATETIME"),
+            ("session_record_expiry_notified_at", "session_record_expiry_notified_at DATETIME"),
         ])
         ensure("test_request_items", [
             ("assigned_to", "assigned_to VARCHAR(36)"),
@@ -292,6 +295,44 @@ def create_app():
     app.config["WEBRTC_TURN_USERNAME"] = os.environ.get("WEBRTC_TURN_USERNAME", "")
     app.config["WEBRTC_TURN_CREDENTIAL"] = os.environ.get("WEBRTC_TURN_CREDENTIAL", "")
     app.config["WEBRTC_FORCE_RELAY"] = _env_bool("WEBRTC_FORCE_RELAY", False)
+    local_llm_url = (
+        os.environ.get("LOCAL_LLM_API_URL")
+        or os.environ.get("OLLAMA_BASE_URL")
+        or os.environ.get("LM_STUDIO_BASE_URL")
+        or ""
+    )
+    app.config["LOCAL_LLM_API_URL"] = local_llm_url
+    app.config["LOCAL_LLM_MODEL"] = os.environ.get("LOCAL_LLM_MODEL", "llama3.1:8b")
+    app.config["LOCAL_LLM_PROVIDER"] = os.environ.get("LOCAL_LLM_PROVIDER", "auto").strip().lower()
+    app.config["LOCAL_LLM_ENABLED"] = _env_bool("LOCAL_LLM_ENABLED", bool(local_llm_url))
+    try:
+        app.config["LOCAL_LLM_TIMEOUT_SECONDS"] = float(os.environ.get("LOCAL_LLM_TIMEOUT_SECONDS", "1.8"))
+    except ValueError:
+        app.config["LOCAL_LLM_TIMEOUT_SECONDS"] = 1.8
+    try:
+        app.config["LOCAL_LLM_FAILURE_COOLDOWN_SECONDS"] = float(
+            os.environ.get("LOCAL_LLM_FAILURE_COOLDOWN_SECONDS", "20")
+        )
+    except ValueError:
+        app.config["LOCAL_LLM_FAILURE_COOLDOWN_SECONDS"] = 20.0
+    try:
+        app.config["CONSULTATION_RECORDING_RETENTION_DAYS"] = int(
+            os.environ.get("CONSULTATION_RECORDING_RETENTION_DAYS", "30")
+        )
+    except ValueError:
+        app.config["CONSULTATION_RECORDING_RETENTION_DAYS"] = 30
+    try:
+        app.config["CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS"] = int(
+            os.environ.get("CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS", "7")
+        )
+    except ValueError:
+        app.config["CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS"] = 7
+    try:
+        app.config["CONSULTATION_RECORDING_CLEANUP_INTERVAL_SECONDS"] = int(
+            os.environ.get("CONSULTATION_RECORDING_CLEANUP_INTERVAL_SECONDS", "3600")
+        )
+    except ValueError:
+        app.config["CONSULTATION_RECORDING_CLEANUP_INTERVAL_SECONDS"] = 3600
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=7)
     app.config["STATIC_ASSET_VERSION"] = _static_asset_version(app)
 
@@ -475,6 +516,18 @@ def create_app():
     app.jinja_env.globals["render_avatar"] = render_avatar
     app.jinja_env.globals["initials_for"] = initials_for
 
+    @app.cli.command("cleanup-recordings")
+    @with_appcontext
+    def cleanup_recordings_command():
+        """Warn doctors about expiring consultation videos and delete expired files."""
+        from .consultation_recordings import run_recording_retention_tasks
+
+        result = run_recording_retention_tasks()
+        print(
+            "Consultation recording retention complete: "
+            f"{result['warned']} warning(s), {result['deleted']} deleted."
+        )
+
     @app.before_request
     def _global_guard():
         if current_user.is_authenticated and (
@@ -519,6 +572,16 @@ def create_app():
             except Exception as exc:
                 db.session.rollback()
                 app.logger.warning("Near-limit reminder check failed: %s", exc)
+            try:
+                last_cleanup = app.config.get("_RECORDING_RETENTION_LAST_CHECK")
+                interval = app.config.get("CONSULTATION_RECORDING_CLEANUP_INTERVAL_SECONDS", 3600)
+                if not last_cleanup or (now - last_cleanup).total_seconds() >= interval:
+                    from .consultation_recordings import run_recording_retention_tasks
+                    run_recording_retention_tasks(now=now)
+                    app.config["_RECORDING_RETENTION_LAST_CHECK"] = now
+            except Exception as exc:
+                db.session.rollback()
+                app.logger.warning("Consultation recording retention check failed: %s", exc)
 
     @app.route("/app")
     def app_home():

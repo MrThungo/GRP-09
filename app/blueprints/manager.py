@@ -16,7 +16,7 @@ from ..models import (
     TestConsumable, TestCategory, SampleType, Patient, Condition, Allergy, Medication,
     ROLE_LABELS, TITLE_OPTIONS, GENDER_OPTIONS,
 )
-from ..notification_pages import mark_user_notifications_read, render_user_notifications
+from ..notification_pages import clear_user_notifications, mark_user_notifications_read, render_user_notifications
 from ..services import apply_stock_movement, log_audit, send_email
 from ..reports import build_report_pdf, parse_range
 from ..sa_id import validate_sa_id
@@ -210,12 +210,17 @@ def _gate():
 
 @bp.route("/notifications")
 def notifications():
-    return render_user_notifications("manager.mark_all_read")
+    return render_user_notifications("manager.mark_all_read", "manager.clear_all_notifications")
 
 
 @bp.route("/notifications/mark-all-read", methods=["POST"])
 def mark_all_read():
     return mark_user_notifications_read("manager.notifications")
+
+
+@bp.route("/notifications/clear-all", methods=["POST"])
+def clear_all_notifications():
+    return clear_user_notifications("manager.notifications")
 
 
 @bp.route("/profile", methods=["GET", "POST"])

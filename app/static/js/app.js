@@ -384,6 +384,8 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     cancel.focus();
   }
 
+  window.showConfirmModal = showConfirmModal;
+
   document.addEventListener("submit", event => {
     const form = event.target;
     if (!(form instanceof HTMLFormElement)) return;
@@ -490,7 +492,13 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     <div data-bell-panel
          class="notif-panel absolute right-4 top-12 w-80 max-h-[60vh] overflow-auto
                 bg-slate-950 border border-slate-800 rounded-lg text-sm">
-      <div class="px-4 py-3 border-b border-slate-800 font-medium">Notifications</div>
+      <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-800">
+        <div class="font-medium">Notifications</div>
+        <button type="button" data-bell-clear
+                class="hidden rounded border border-slate-700 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-300 hover:bg-slate-800">
+          Clear all
+        </button>
+      </div>
       <div data-bell-list class="divide-y divide-slate-800">
         <div class="px-4 py-6 text-slate-500 text-center">Loading…</div>
       </div>
@@ -500,6 +508,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   const panel = root.querySelector("[data-bell-panel]");
   const list = root.querySelector("[data-bell-list]");
   const dot = root.querySelector("[data-bell-dot]");
+  const clearButton = root.querySelector("[data-bell-clear]");
   let knownUnreadCount = null;
 
   btn.addEventListener("click", () => panel.classList.toggle("open"));
@@ -514,10 +523,13 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
       if (!Array.isArray(items) || items.length === 0) {
         list.innerHTML = `<div class="px-4 py-6 text-slate-500 text-center">No notifications.</div>`;
         dot.classList.add("hidden");
+        clearButton?.classList.add("hidden");
+        knownUnreadCount = 0;
         return;
       }
       knownUnreadCount = items.filter(i => !i.read).length;
       dot.classList.toggle("hidden", knownUnreadCount === 0);
+      clearButton?.classList.remove("hidden");
       list.innerHTML = items.map(n => `
         <a href="${n.link || "#"}" data-id="${n.id}"
            class="block px-4 py-3 hover:bg-slate-800 ${n.read ? "opacity-60" : ""}">
@@ -535,6 +547,35 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
       list.innerHTML = `<div class="px-4 py-6 text-rose-400 text-center">Failed to load.</div>`;
     }
   }
+
+  async function clearNotifications() {
+    clearButton.disabled = true;
+    try {
+      const res = await fetch("/api/notifications/clear", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Accept": "application/json" },
+      });
+      if (!res.ok) throw new Error("Clear failed");
+      knownUnreadCount = 0;
+      dot.classList.add("hidden");
+      clearButton.classList.add("hidden");
+      list.innerHTML = `<div class="px-4 py-6 text-slate-500 text-center">No notifications.</div>`;
+    } catch (e) {
+      list.innerHTML = `<div class="px-4 py-6 text-rose-400 text-center">Could not clear notifications.</div>`;
+    } finally {
+      clearButton.disabled = false;
+    }
+  }
+
+  clearButton?.addEventListener("click", () => {
+    window.showConfirmModal({
+      message: "Clear all notifications from your inbox?",
+      label: "Clear all",
+      onConfirm: clearNotifications,
+    });
+  });
+
   function escape(s) {
     return String(s).replace(/[&<>"']/g, c => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -1461,6 +1502,162 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   });
 })();
 
+// --- Client-side list pagination ---
+(function () {
+  const DEFAULT_PAGE_SIZE = 10;
+  const PAGE_SIZES = [10, 25, 50, 100];
+  const paginatedLists = new Map();
+
+  function listItems(list) {
+    return Array.from(list.children).filter(item => item instanceof HTMLElement);
+  }
+
+  function shouldPaginate(list) {
+    if (list.dataset.noPagination !== undefined) return false;
+    return listItems(list).length > Number(list.dataset.pageSize || DEFAULT_PAGE_SIZE);
+  }
+
+  function makeButton(label) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    return button;
+  }
+
+  function initListPagination(list) {
+    if (!shouldPaginate(list) || paginatedLists.has(list)) return;
+
+    const controls = document.createElement("div");
+    controls.className = "table-pagination";
+    const status = document.createElement("div");
+    status.className = "table-pagination-status";
+
+    const sizeWrap = document.createElement("label");
+    sizeWrap.className = "table-pagination-size";
+    const sizeLabel = document.createElement("span");
+    sizeLabel.textContent = "Rows";
+    const sizeSelect = document.createElement("select");
+    PAGE_SIZES.forEach(size => {
+      const option = document.createElement("option");
+      option.value = String(size);
+      option.textContent = String(size);
+      sizeSelect.appendChild(option);
+    });
+    sizeWrap.append(sizeLabel, sizeSelect);
+
+    const pageButtons = document.createElement("div");
+    pageButtons.className = "table-pagination-pages";
+    const controlsWrap = document.createElement("div");
+    controlsWrap.className = "table-pagination-controls";
+    const prevButton = makeButton("Prev");
+    const nextButton = makeButton("Next");
+    controlsWrap.append(prevButton, pageButtons, nextButton);
+    controls.append(status, sizeWrap, controlsWrap);
+
+    const state = {
+      page: 1,
+      pageSize: Number(list.dataset.pageSize || DEFAULT_PAGE_SIZE),
+      controls,
+      status,
+      sizeSelect,
+      pageButtons,
+      prevButton,
+      nextButton,
+    };
+    if (!PAGE_SIZES.includes(state.pageSize)) state.pageSize = DEFAULT_PAGE_SIZE;
+    sizeSelect.value = String(state.pageSize);
+
+    function renderPageButtons(pageCount) {
+      pageButtons.replaceChildren();
+      const maxButtons = 5;
+      let start = Math.max(1, state.page - Math.floor(maxButtons / 2));
+      const end = Math.min(pageCount, start + maxButtons - 1);
+      start = Math.max(1, end - maxButtons + 1);
+      for (let page = start; page <= end; page++) {
+        const button = makeButton(String(page));
+        if (page === state.page) {
+          button.disabled = true;
+          button.setAttribute("aria-current", "page");
+        }
+        button.addEventListener("click", () => {
+          state.page = page;
+          refresh({ preservePage: true });
+        });
+        pageButtons.appendChild(button);
+      }
+    }
+
+    function refresh(options = {}) {
+      const items = listItems(list);
+      const visibleItems = items.filter(item => !item.hidden);
+      const total = visibleItems.length;
+      const pageCount = Math.max(1, Math.ceil(total / state.pageSize));
+      if (options.reset) state.page = 1;
+      state.page = Math.min(Math.max(state.page, 1), pageCount);
+
+      items.forEach(item => {
+        if (item.dataset.listPaginationHidden === "true") {
+          item.style.display = item.dataset.listPaginationDisplay || "";
+          delete item.dataset.listPaginationHidden;
+          delete item.dataset.listPaginationDisplay;
+        }
+      });
+
+      if (total <= state.pageSize) {
+        status.textContent = total ? `Showing 1-${total} of ${total}` : "No rows";
+        prevButton.disabled = true;
+        nextButton.disabled = true;
+        renderPageButtons(1);
+        return;
+      }
+
+      const start = (state.page - 1) * state.pageSize;
+      const end = start + state.pageSize;
+      visibleItems.forEach((item, index) => {
+        if (index >= start && index < end) return;
+        item.dataset.listPaginationHidden = "true";
+        item.dataset.listPaginationDisplay = item.style.display || "";
+        item.style.display = "none";
+      });
+      status.textContent = `Showing ${start + 1}-${Math.min(end, total)} of ${total}`;
+      prevButton.disabled = state.page <= 1;
+      nextButton.disabled = state.page >= pageCount;
+      renderPageButtons(pageCount);
+    }
+
+    prevButton.addEventListener("click", () => {
+      state.page -= 1;
+      refresh({ preservePage: true });
+    });
+    nextButton.addEventListener("click", () => {
+      state.page += 1;
+      refresh({ preservePage: true });
+    });
+    sizeSelect.addEventListener("change", () => {
+      state.pageSize = Number(sizeSelect.value) || DEFAULT_PAGE_SIZE;
+      refresh({ reset: true });
+    });
+
+    state.refresh = refresh;
+    paginatedLists.set(list, state);
+    list.insertAdjacentElement("afterend", controls);
+    refresh({ reset: true });
+  }
+
+  window.initListPagination = initListPagination;
+  window.refreshAllListPagination = function (options = {}) {
+    paginatedLists.forEach(state => state.refresh(options));
+  };
+
+  const schedulePagination = window.requestIdleCallback
+    ? callback => window.requestIdleCallback(callback, { timeout: 700 })
+    : callback => window.setTimeout(callback, 0);
+
+  schedulePagination(() => {
+    document.querySelectorAll("[data-paginated-list]").forEach(initListPagination);
+  });
+})();
+
 // --- Live page updates without full refresh ---
 (function () {
   const region = document.querySelector("[data-live-page-region]");
@@ -1474,6 +1671,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   let refreshing = false;
   let timer = null;
   let lastUserEditAt = 0;
+  let lastPageSignature = "";
 
   function schedule(delay = POLL_MS) {
     window.clearTimeout(timer);
@@ -1494,6 +1692,61 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     if (Date.now() - lastUserEditAt < 12000) return true;
     if (document.querySelector("form[data-live-lock], form[data-submitting='1']")) return true;
     return false;
+  }
+
+  function signatureFromKeys(data, keys) {
+    if (!data || !keys.length) return "";
+    return JSON.stringify(keys.map(key => [key, data[key] ?? ""]));
+  }
+
+  function pageLiveKeys(data) {
+    const path = window.location.pathname.toLowerCase();
+    const role = data?.role || "";
+    const notificationKeys = ["notifications_latest", "notifications_unread"];
+    const messageKeys = ["messages_latest", "messages_read_latest", "messages_unread"];
+    const requestKeys = [
+      "requests_created", "requests_updated", "requests_released", "request_statuses",
+      "items_created", "items_started", "items_completed", "items_captured",
+      "items_verified", "item_statuses", "sample_statuses", "samples_received", "samples_rejected",
+    ];
+    const consultationKeys = [
+      "consultations_created", "consultations_updated", "consultation_statuses",
+      "availability_created", "availability_updated", "availability_statuses",
+    ];
+    const accessKeys = ["access_created", "access_responded", "access_statuses"];
+    const inventoryKeys = ["catalog_latest", "consumables_latest", "orders_latest", "stock_latest", "order_statuses"];
+    const adminKeys = ["users_latest", "patients_latest"];
+
+    if (path.includes("/notifications")) return notificationKeys;
+    if (path.includes("/messages")) return messageKeys;
+    if (path.includes("/consultation")) return consultationKeys;
+    if (path.includes("/chatbot")) return [];
+
+    if (path.includes("/reports") || path.includes("/dashboard") || path.endsWith("/admin/") || path.endsWith("/manager/") || path.endsWith("/doctor/") || path.endsWith("/technician/") || path.endsWith("/patient/")) {
+      if (role === "admin") return [...requestKeys, ...consultationKeys, ...accessKeys, ...inventoryKeys, ...adminKeys];
+      if (role === "lab_manager") return [...requestKeys, ...inventoryKeys, ...consultationKeys];
+      if (role === "doctor") return [...requestKeys, ...consultationKeys, ...accessKeys];
+      if (role === "lab_technician") return requestKeys;
+      if (role === "patient") return [...requestKeys, ...consultationKeys, ...accessKeys];
+    }
+
+    if (path.includes("/inventory") || path.includes("/orders") || path.includes("/catalog") || path.includes("/suppliers")) {
+      return inventoryKeys;
+    }
+    if (path.includes("/users") || path.includes("/patients") || path.includes("/doctors") || path.includes("/technicians") || path.includes("/audit")) {
+      return [...adminKeys, ...accessKeys];
+    }
+    if (path.includes("/requests") || path.includes("/samples") || path.includes("/verify") || path.includes("/results")) {
+      return requestKeys;
+    }
+    if (path.includes("/access") || path.includes("/consent")) {
+      return accessKeys;
+    }
+    return [...requestKeys, ...consultationKeys, ...accessKeys];
+  }
+
+  function pageSignature(data) {
+    return signatureFromKeys(data, pageLiveKeys(data));
   }
 
   function executeInlineScripts(container) {
@@ -1527,6 +1780,12 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     }
     if (typeof window.refreshAllTablePagination === "function") {
       window.refreshAllTablePagination({ preservePage: true });
+    }
+    if (typeof window.initListPagination === "function") {
+      region.querySelectorAll("[data-paginated-list]").forEach(list => window.initListPagination(list));
+    }
+    if (typeof window.refreshAllListPagination === "function") {
+      window.refreshAllListPagination({ preservePage: true });
     }
     if (typeof window.normalizeResponsiveCharts === "function") {
       window.setTimeout(window.normalizeResponsiveCharts, 40);
@@ -1586,11 +1845,21 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
       if (!response.ok) throw new Error("Live snapshot failed");
       const data = await response.json();
       document.dispatchEvent(new CustomEvent("nmb:live-snapshot", { detail: data }));
+      const nextPageSignature = pageSignature(data);
       if (!lastVersion) {
         lastVersion = data.version || "";
+        lastPageSignature = nextPageSignature;
       } else if (data.version && data.version !== lastVersion) {
-        const updated = await refreshCurrentPage();
-        if (updated) lastVersion = data.version;
+        if (!nextPageSignature || nextPageSignature === lastPageSignature) {
+          lastVersion = data.version;
+          if (!lastPageSignature) lastPageSignature = nextPageSignature;
+        } else {
+          const updated = await refreshCurrentPage();
+          if (updated) {
+            lastVersion = data.version;
+            lastPageSignature = nextPageSignature;
+          }
+        }
       }
       schedule(POLL_MS);
     } catch (error) {

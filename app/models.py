@@ -395,6 +395,8 @@ class OnlineConsultation(db.Model):
     session_record_mime = Column(String(80), default="text/plain")
     session_record_size = Column(Integer)
     session_record_body = Column(Text)
+    session_record_expires_at = Column(DateTime)
+    session_record_expiry_notified_at = Column(DateTime)
     room_token = Column(String(64), nullable=False, default=_room_token)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)

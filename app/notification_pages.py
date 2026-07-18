@@ -7,7 +7,7 @@ from .extensions import db
 from .models import Notification
 
 
-def render_user_notifications(mark_all_endpoint):
+def render_user_notifications(mark_all_endpoint, clear_all_endpoint=None):
     rows = (
         Notification.query
         .filter_by(user_id=current_user.id)
@@ -21,6 +21,7 @@ def render_user_notifications(mark_all_endpoint):
         rows=rows,
         unread_count=unread_count,
         mark_all_endpoint=mark_all_endpoint,
+        clear_all_endpoint=clear_all_endpoint,
     )
 
 
@@ -31,4 +32,13 @@ def mark_user_notifications_read(redirect_endpoint):
     )
     db.session.commit()
     flash("All notifications marked as read.", "success")
+    return redirect(url_for(redirect_endpoint))
+
+
+def clear_user_notifications(redirect_endpoint):
+    count = Notification.query.filter_by(user_id=current_user.id).delete(
+        synchronize_session=False,
+    )
+    db.session.commit()
+    flash(f"Cleared {count} notification(s).", "success")
     return redirect(url_for(redirect_endpoint))

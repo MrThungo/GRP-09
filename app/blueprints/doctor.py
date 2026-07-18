@@ -8,7 +8,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
 
-from ..consultation_recordings import has_video_recording, recording_path
+from ..consultation_recordings import extend_recording_expiry, has_video_recording, recording_path
 from ..extensions import db
 from ..auth_utils import role_required
 from ..models import (
@@ -32,7 +32,7 @@ from ..models import (
     ConsultationSignal,
     DoctorAvailabilitySlot,
 )
-from ..notification_pages import mark_user_notifications_read, render_user_notifications
+from ..notification_pages import clear_user_notifications, mark_user_notifications_read, render_user_notifications
 from ..reports import build_request_results_pdf
 from ..sa_id import validate_sa_id
 from ..services import doctor_return_item_for_review, release_request, log_audit, notify, send_email
@@ -52,12 +52,17 @@ def _gate():
 
 @bp.route("/notifications")
 def notifications():
-    return render_user_notifications("doctor.mark_all_read")
+    return render_user_notifications("doctor.mark_all_read", "doctor.clear_all_notifications")
 
 
 @bp.route("/notifications/mark-all-read", methods=["POST"])
 def mark_all_read():
     return mark_user_notifications_read("doctor.notifications")
+
+
+@bp.route("/notifications/clear-all", methods=["POST"])
+def clear_all_notifications():
+    return clear_user_notifications("doctor.notifications")
 
 
 @bp.route("/")
@@ -368,6 +373,39 @@ def _latest_consultation_for_request(req):
             .first())
 
 
+def _portal_url(endpoint, **values):
+    base_url = (current_app.config.get("APP_BASE_URL") or "").rstrip("/")
+    if base_url:
+        return f"{base_url}{url_for(endpoint, **values)}"
+    return url_for(endpoint, _external=True, **values)
+
+
+def _patient_email_for_consultation(consultation):
+    patient = consultation.patient
+    if not patient:
+        return ""
+    profile_email = patient.profile.email if patient.profile else ""
+    return patient.email or profile_email or ""
+
+
+def _email_patient_consultation_notice(consultation, subject, body, endpoint, **values):
+    email = _patient_email_for_consultation(consultation)
+    if not email:
+        return False
+    link = _portal_url(endpoint, **values)
+    patient_name = consultation.patient.full_name if consultation.patient else email
+    return send_email(
+        [email],
+        subject,
+        (
+            f"Hello {patient_name},\n\n"
+            f"{body}\n\n"
+            f"Open consultation: {link}\n\n"
+            "- NMB-HLab"
+        ),
+    )
+
+
 def _ensure_consultation_offer(req, message=None):
     existing = _active_consultation_for_request(req)
     if existing:
@@ -392,6 +430,16 @@ def _ensure_consultation_offer(req, message=None):
             "Please choose an in-person discussion or an invite-only online consultation."
         ),
         url_for("patient.consultation_detail", consultation_id=consultation.id),
+    )
+    _email_patient_consultation_notice(
+        consultation,
+        f"NMB-HLab consultation choice: {req.request_number}",
+        (
+            f"Your results for {req.request_number} are ready. "
+            "Please choose whether you prefer an in-person discussion or an invite-only online consultation."
+        ),
+        "patient.consultation_detail",
+        consultation_id=consultation.id,
     )
     log_audit(current_user.id, "offer_online_consultation", "online_consultation", consultation.id)
     return consultation, True
@@ -662,6 +710,16 @@ def invite_consultation(consultation_id):
             ),
             url_for("patient.consultation_detail", consultation_id=consultation.id),
         )
+    _email_patient_consultation_notice(
+        consultation,
+        f"NMB-HLab online consultation invite: {consultation.request.request_number}",
+        (
+            f"Your doctor invited you to discuss {consultation.request.request_number} "
+            f"on {scheduled_at.strftime('%Y-%m-%d at %H:%M')}."
+        ),
+        "patient.consultation_detail",
+        consultation_id=consultation.id,
+    )
     log_audit(current_user.id, "invite_online_consultation", "online_consultation", consultation.id)
     db.session.commit()
     flash("Online consultation invite sent.", "success")
@@ -686,6 +744,14 @@ def start_consultation(consultation_id):
                 "Your doctor has opened the secure consultation room.",
                 url_for("patient.consultation_waiting", consultation_id=consultation.id, room_token=consultation.room_token),
             )
+        _email_patient_consultation_notice(
+            consultation,
+            f"NMB-HLab online consultation started: {consultation.request.request_number}",
+            "Your doctor has opened the secure consultation room.",
+            "patient.consultation_waiting",
+            consultation_id=consultation.id,
+            room_token=consultation.room_token,
+        )
     log_audit(current_user.id, "start_online_consultation", "online_consultation", consultation.id)
     db.session.commit()
     return redirect(url_for("doctor.consultation_room", consultation_id=consultation.id, room_token=consultation.room_token))
@@ -734,8 +800,33 @@ def consultation_record_video(consultation_id):
         path,
         mimetype=consultation.session_record_mime or "video/webm",
         as_attachment=False,
+        conditional=True,
+        max_age=0,
         download_name=consultation.session_record_filename or "consultation-recording.webm",
     )
+
+
+@bp.route("/consultations/<consultation_id>/record/extend", methods=["POST"])
+def extend_consultation_record(consultation_id):
+    consultation = _doctor_consultation_or_404(consultation_id)
+    if not has_video_recording(consultation):
+        flash("No saved consultation video is available to extend.", "error")
+        return redirect(url_for("doctor.consultations"))
+    try:
+        days = int(request.form.get("days") or 30)
+    except ValueError:
+        days = 30
+    expires_at = extend_recording_expiry(consultation, days=days)
+    log_audit(
+        current_user.id,
+        "extend_consultation_recording",
+        "online_consultation",
+        consultation.id,
+        {"days": days, "expires_at": expires_at.isoformat()},
+    )
+    db.session.commit()
+    flash(f"Recording expiry extended to {expires_at.strftime('%Y-%m-%d %H:%M')}.", "success")
+    return redirect(url_for("doctor.consultation_record", consultation_id=consultation.id))
 
 
 @bp.route("/consultations/<consultation_id>/room/<room_token>")

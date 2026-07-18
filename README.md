@@ -95,6 +95,34 @@ Patients can open **Assistant** in the portal sidebar. The assistant can answer
 patient-scoped questions about profile details, request status, latest released
 results, secure report links, access requests, consent and notifications.
 
+### Optional local LLM intent router
+
+The portal assistant works without any LLM service. For local development or a
+private network deployment, you can optionally let a local LLM classify natural
+language into safe, role-specific assistant intents. The app still executes only
+the deterministic role-gated tools.
+
+```bash
+LOCAL_LLM_ENABLED=true
+LOCAL_LLM_API_URL=http://localhost:11434
+LOCAL_LLM_PROVIDER=ollama
+LOCAL_LLM_MODEL=llama3.1:8b
+LOCAL_LLM_TIMEOUT_SECONDS=1.8
+LOCAL_LLM_FAILURE_COOLDOWN_SECONDS=20
+```
+
+For LM Studio/OpenAI-compatible local servers, use:
+
+```bash
+LOCAL_LLM_API_URL=http://localhost:1234/v1
+LOCAL_LLM_PROVIDER=openai
+LOCAL_LLM_MODEL=local-model
+```
+
+Keep `LOCAL_LLM_ENABLED=false` on hosted deployments unless that server can
+reach the private model endpoint. If the endpoint is unavailable, the assistant
+falls back to the built-in role-aware engine.
+
 ## Online consultation video
 
 The live consultation room uses WebRTC in the browser. Flask/PythonAnywhere only
@@ -112,6 +140,22 @@ WEBRTC_FORCE_RELAY=false
 
 Set `WEBRTC_FORCE_RELAY=true` temporarily when testing TURN, then switch it back
 to `false` after confirming the live room connects.
+
+Saved consultation videos get an expiry date when recording finishes. Doctors
+receive both a portal notification and an email before expiry, and expired video
+files are hard-deleted by the retention task.
+
+```bash
+CONSULTATION_RECORDING_RETENTION_DAYS=30
+CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS=7
+CONSULTATION_RECORDING_CLEANUP_INTERVAL_SECONDS=3600
+```
+
+For PythonAnywhere, add a scheduled task that runs:
+
+```bash
+flask --app wsgi:app cleanup-recordings
+```
 
 ## Project layout
 

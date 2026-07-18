@@ -11,12 +11,24 @@
       Review system updates, request activity and messages sent to your account.
     </p>
   </div>
-  <form method="post" action="{{ url_for(mark_all_endpoint) }}">
-    <button class="btn-secondary px-3 py-2 text-xs" type="submit"
-            {% if unread_count == 0 %}disabled{% endif %}>
-      Mark all read
-    </button>
-  </form>
+  <div class="flex flex-wrap gap-2">
+    <form method="post" action="{{ url_for(mark_all_endpoint) }}">
+      <button class="btn-secondary px-3 py-2 text-xs" type="submit"
+              {% if unread_count == 0 %}disabled{% endif %}>
+        Mark all read
+      </button>
+    </form>
+    {% if clear_all_endpoint %}
+      <form method="post"
+            action="{{ url_for(clear_all_endpoint) }}"
+            data-confirm-message="Clear all notifications? This removes them from your inbox.">
+        <button class="btn-secondary px-3 py-2 text-xs" type="submit"
+                {% if rows|length == 0 %}disabled{% endif %}>
+          Clear all
+        </button>
+      </form>
+    {% endif %}
+  </div>
 </div>
 
 <section class="table-card overflow-hidden">
@@ -33,7 +45,7 @@
     </div>
   </div>
 
-  <ul class="divide-y divide-slate-800">
+  <ul class="divide-y divide-slate-800" data-paginated-list data-page-size="10">
     {% for n in rows %}
       <li class="px-5 py-4 {% if not n.read %}bg-sky-950/20{% endif %}">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

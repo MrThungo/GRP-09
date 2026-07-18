@@ -5,6 +5,7 @@ import base64
 import json
 import re
 import secrets
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -26,6 +27,8 @@ from .models import (
     ConsentGrant,
     Medication,
     Notification,
+    DoctorAvailabilitySlot,
+    OnlineConsultation,
     Patient,
     Supplier,
     TechnicianTest,
@@ -363,6 +366,8 @@ def _role_endpoint(user, kind):
             "patients": "doctor.patients",
             "alerts": "doctor.alerts",
             "access": "doctor.access_requests",
+            "consultations": "doctor.consultations",
+            "availability": "doctor.consultations",
             "profile": "doctor.profile",
         },
         "lab_technician": {
@@ -379,6 +384,8 @@ def _role_endpoint(user, kind):
             "requests": "patient.requests_list",
             "profile": "patient.profile",
             "results": "patient.results",
+            "consultations": "patient.consultations",
+            "availability": "patient.consultations",
         },
     }
     return routes.get(role, {}).get(kind)
@@ -1868,6 +1875,457 @@ def _booking_reply():
     )
 
 
+def _consultation_label(status):
+    return (status or "unknown").replace("_", " ").title()
+
+
+def _consultation_primary_link(user, consultation):
+    role = user.primary_role
+    if role == "patient":
+        if consultation.status == "started":
+            return _app_link(
+                "patient.consultation_room",
+                "Join live session",
+                consultation_id=consultation.id,
+                room_token=consultation.room_token,
+            )
+        if consultation.status == "accepted":
+            return _app_link(
+                "patient.consultation_waiting",
+                "Enter waiting room",
+                consultation_id=consultation.id,
+                room_token=consultation.room_token,
+            )
+        return _app_link(
+            "patient.consultation_detail",
+            "Open consultation",
+            consultation_id=consultation.id,
+        )
+    if role == "doctor" and consultation.status in ("accepted", "started"):
+        return _app_link(
+            "doctor.consultation_room",
+            "Open consultation room",
+            consultation_id=consultation.id,
+            room_token=consultation.room_token,
+        )
+    return _role_link(user, "consultations", "Open consultations")
+
+
+def _format_consultation_row(consultation, viewer_role):
+    scheduled = _dt(consultation.scheduled_at) if consultation.scheduled_at else "not scheduled"
+    request_number = consultation.request.request_number if consultation.request else "request"
+    if viewer_role == "doctor":
+        person = consultation.patient.full_name if consultation.patient else "Patient"
+    else:
+        person = consultation.doctor.full_name or consultation.doctor.email if consultation.doctor else "Doctor"
+    preference = consultation.patient_preference.replace("_", " ") if consultation.patient_preference else "not chosen"
+    return (
+        f"- {request_number}: {person}, {_consultation_label(consultation.status)}, "
+        f"{preference}, {scheduled}"
+    )
+
+
+def _consultation_query_for_user(user):
+    if user.primary_role == "doctor":
+        return OnlineConsultation.query.filter_by(doctor_id=user.id)
+    if user.primary_role == "patient":
+        patient = patient_for_user(user)
+        if not patient:
+            return OnlineConsultation.query.filter(OnlineConsultation.id == "__none__")
+        return OnlineConsultation.query.filter_by(patient_id=patient.id)
+    return OnlineConsultation.query.filter(OnlineConsultation.id == "__none__")
+
+
+def _consultation_summary_reply(user):
+    if user.primary_role not in ("doctor", "patient"):
+        return ChatbotReply(
+            body="Consultations are available from the doctor and patient workspaces.",
+            links=_links(_role_link(user, "dashboard", "Open dashboard")),
+        )
+
+    query = _consultation_query_for_user(user)
+    rows = (
+        query
+        .options(
+            selectinload(OnlineConsultation.patient),
+            selectinload(OnlineConsultation.doctor),
+            selectinload(OnlineConsultation.request),
+        )
+        .order_by(OnlineConsultation.scheduled_at.desc(), OnlineConsultation.created_at.desc())
+        .limit(6)
+        .all()
+    )
+    if not rows:
+        return ChatbotReply(
+            body="I could not find any consultations for your workspace yet.",
+            links=_links(_role_link(user, "consultations", "Open consultations")),
+        )
+
+    counts = dict(
+        query
+        .with_entities(OnlineConsultation.status, func.count(OnlineConsultation.id))
+        .group_by(OnlineConsultation.status)
+        .all()
+    )
+    lines = [
+        f"{_role_label(user)} consultation summary",
+        ", ".join(
+            f"{_consultation_label(status)}: {count}"
+            for status, count in sorted(counts.items())
+        ) or "No consultation counts available.",
+        "",
+        "Recent consultations:",
+    ]
+    for row in rows:
+        lines.append(_format_consultation_row(row, user.primary_role))
+
+    primary = next((row for row in rows if row.status in ("started", "accepted", "invited")), rows[0])
+    return ChatbotReply(
+        body="\n".join(lines),
+        links=_links(
+            _consultation_primary_link(user, primary),
+            _role_link(user, "consultations", "Open all consultations"),
+        ),
+    )
+
+
+def _availability_reply(user):
+    if user.primary_role == "doctor":
+        now = datetime.now()
+        upcoming = (
+            DoctorAvailabilitySlot.query
+            .filter(
+                DoctorAvailabilitySlot.doctor_id == user.id,
+                DoctorAvailabilitySlot.starts_at >= now,
+            )
+            .order_by(DoctorAvailabilitySlot.starts_at.asc())
+            .limit(6)
+            .all()
+        )
+        counts = dict(
+            DoctorAvailabilitySlot.query
+            .filter_by(doctor_id=user.id)
+            .with_entities(DoctorAvailabilitySlot.status, func.count(DoctorAvailabilitySlot.id))
+            .group_by(DoctorAvailabilitySlot.status)
+            .all()
+        )
+        lines = [
+            "Doctor availability summary",
+            ", ".join(f"{status}: {count}" for status, count in sorted(counts.items())) or "No slots yet.",
+            "",
+            "Upcoming slots:",
+        ]
+        if upcoming:
+            for slot in upcoming:
+                status = "booked" if slot.booked_consultation_id else slot.status
+                lines.append(f"- {_dt(slot.starts_at)} to {slot.ends_at.strftime('%H:%M')}: {status}")
+        else:
+            lines.append("- No upcoming slots found.")
+        return ChatbotReply(
+            body="\n".join(lines),
+            links=_links(_role_link(user, "availability", "Manage availability")),
+        )
+
+    if user.primary_role == "patient":
+        patient = patient_for_user(user)
+        if not patient:
+            return ChatbotReply(body="I could not find your patient profile.", links=[])
+        doctor_ids = [
+            doctor_id
+            for (doctor_id,) in (
+                OnlineConsultation.query
+                .with_entities(OnlineConsultation.doctor_id)
+                .filter(OnlineConsultation.patient_id == patient.id)
+                .distinct()
+                .all()
+            )
+        ]
+        if not doctor_ids:
+            return ChatbotReply(
+                body="I could not find any doctor consultations linked to your profile yet.",
+                links=_links(_role_link(user, "consultations", "Open consultations")),
+            )
+        upcoming = (
+            DoctorAvailabilitySlot.query
+            .options(selectinload(DoctorAvailabilitySlot.doctor))
+            .filter(
+                DoctorAvailabilitySlot.doctor_id.in_(doctor_ids),
+                DoctorAvailabilitySlot.status == "open",
+                DoctorAvailabilitySlot.booked_consultation_id.is_(None),
+                DoctorAvailabilitySlot.starts_at >= datetime.now(),
+            )
+            .order_by(DoctorAvailabilitySlot.starts_at.asc())
+            .limit(6)
+            .all()
+        )
+        lines = ["Available in-person consultation times:"]
+        if upcoming:
+            for slot in upcoming:
+                doctor = slot.doctor.full_name or slot.doctor.email if slot.doctor else "Doctor"
+                location = f", {slot.location}" if slot.location else ""
+                lines.append(f"- {_dt(slot.starts_at)} to {slot.ends_at.strftime('%H:%M')}: {doctor}{location}")
+        else:
+            lines.append("- No open times are available yet. Check consultations again later.")
+        return ChatbotReply(
+            body="\n".join(lines),
+            links=_links(_role_link(user, "availability", "Open consultation calendar")),
+        )
+
+    return ChatbotReply(
+        body="Availability is only used by doctor and patient consultation workflows.",
+        links=_links(_role_link(user, "dashboard", "Open dashboard")),
+    )
+
+
+ROLE_INTENTS = {
+    "patient": {
+        "help",
+        "profile",
+        "request_status",
+        "request_detail",
+        "latest_results",
+        "abnormal_results",
+        "search_results",
+        "reports",
+        "access",
+        "notifications",
+        "consultations",
+        "availability",
+        "booking_help",
+        "dashboard_summary",
+        "unknown",
+    },
+    "doctor": {
+        "help",
+        "profile",
+        "requests_summary",
+        "dashboard_summary",
+        "alerts",
+        "patients",
+        "reports",
+        "notifications",
+        "consultations",
+        "availability",
+        "unknown",
+    },
+    "lab_technician": {
+        "help",
+        "profile",
+        "work_queue",
+        "verify_queue",
+        "dashboard_summary",
+        "reports",
+        "notifications",
+        "unknown",
+    },
+    "lab_manager": {
+        "help",
+        "profile",
+        "dashboard_summary",
+        "inventory",
+        "orders",
+        "doctors",
+        "technicians",
+        "reports",
+        "notifications",
+        "unknown",
+    },
+    "admin": {
+        "help",
+        "profile",
+        "dashboard_summary",
+        "users",
+        "requests_summary",
+        "audit",
+        "reports",
+        "notifications",
+        "unknown",
+    },
+}
+
+
+def _local_llm_enabled():
+    return bool(
+        current_app.config.get("LOCAL_LLM_ENABLED")
+        and current_app.config.get("LOCAL_LLM_API_URL")
+    )
+
+
+def _local_llm_in_cooldown():
+    return time.monotonic() < float(current_app.config.get("_LOCAL_LLM_DISABLED_UNTIL", 0) or 0)
+
+
+def _record_local_llm_failure(exc):
+    cooldown = float(current_app.config.get("LOCAL_LLM_FAILURE_COOLDOWN_SECONDS", 20) or 20)
+    current_app.config["_LOCAL_LLM_DISABLED_UNTIL"] = time.monotonic() + max(0.0, cooldown)
+    current_app.logger.info("Local LLM intent router unavailable: %s", exc)
+
+
+def _local_llm_endpoint(base_url, provider):
+    base_url = (base_url or "").strip().rstrip("/")
+    provider = (provider or "auto").lower()
+    if not base_url:
+        return "", "none"
+    if provider in {"openai", "lmstudio", "openai-compatible"}:
+        if base_url.endswith("/chat/completions"):
+            return base_url, "openai"
+        return f"{base_url}/chat/completions" if base_url.endswith("/v1") else f"{base_url}/v1/chat/completions", "openai"
+    if provider == "ollama":
+        return base_url if base_url.endswith("/api/chat") else f"{base_url}/api/chat", "ollama"
+    if "/v1" in base_url or base_url.endswith("/chat/completions"):
+        if base_url.endswith("/chat/completions"):
+            return base_url, "openai"
+        return f"{base_url}/chat/completions", "openai"
+    return base_url if base_url.endswith("/api/chat") else f"{base_url}/api/chat", "ollama"
+
+
+def _extract_json_object(raw):
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except ValueError:
+        pass
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not match:
+        return {}
+    try:
+        return json.loads(match.group(0))
+    except ValueError:
+        return {}
+
+
+def _intent_prompt(user, text):
+    role = user.primary_role or "unknown"
+    intents = sorted(ROLE_INTENTS.get(role, {"help", "unknown"}))
+    return (
+        "You are a secure intent router for a medical lab portal assistant.\n"
+        "Return JSON only. Do not answer the user.\n"
+        f"Signed-in role: {role}.\n"
+        f"Allowed intents: {', '.join(intents)}.\n"
+        "Pick only one allowed intent. If the user asks for medical diagnosis, "
+        "treatment, or anything outside the role, use unknown.\n"
+        "Schema: {\"intent\":\"one_allowed_intent\",\"confidence\":0.0_to_1.0}.\n"
+        f"User message: {text[:900]}"
+    )
+
+
+def _local_llm_intent(user, text):
+    if not _local_llm_enabled() or _local_llm_in_cooldown():
+        return None
+
+    endpoint, provider = _local_llm_endpoint(
+        current_app.config.get("LOCAL_LLM_API_URL"),
+        current_app.config.get("LOCAL_LLM_PROVIDER"),
+    )
+    if not endpoint:
+        return None
+
+    model = current_app.config.get("LOCAL_LLM_MODEL") or "llama3.1:8b"
+    timeout = float(current_app.config.get("LOCAL_LLM_TIMEOUT_SECONDS", 1.8) or 1.8)
+    prompt = _intent_prompt(user, text)
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if provider == "openai":
+        payload = {
+            "model": model,
+            "temperature": 0,
+            "max_tokens": 80,
+            "messages": [
+                {"role": "system", "content": "Return strict JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+        }
+    else:
+        payload = {
+            "model": model,
+            "stream": False,
+            "options": {"temperature": 0},
+            "messages": [{"role": "user", "content": prompt}],
+        }
+
+    req = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8") or "{}")
+    except Exception as exc:
+        _record_local_llm_failure(exc)
+        return None
+
+    if provider == "openai":
+        content = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
+    else:
+        content = data.get("message", {}).get("content", "")
+
+    parsed = _extract_json_object(content)
+    intent = _normalized_text(parsed.get("intent", "")).replace(" ", "_")
+    try:
+        confidence = float(parsed.get("confidence", 0))
+    except (TypeError, ValueError):
+        confidence = 0
+    if confidence < 0.45:
+        return None
+    if intent not in ROLE_INTENTS.get(user.primary_role, set()):
+        return None
+    return intent
+
+
+def _role_reply_for_intent(user, intent, text):
+    if not intent or intent == "unknown":
+        return None
+    role = user.primary_role
+    if intent == "help":
+        return _role_help_reply(user)
+    if intent == "profile":
+        if role == "patient":
+            patient = patient_for_user(user)
+            return _profile_reply(patient) if patient else None
+        return _staff_profile_reply(user) if _staff_profile_link(user) else None
+    if intent == "notifications":
+        return _notifications_reply(user)
+    if intent == "reports":
+        return _role_reports_reply(user)
+    if intent in {"dashboard_summary", "requests_summary", "work_queue", "verify_queue", "inventory", "orders", "users", "patients", "doctors", "technicians", "alerts", "audit"}:
+        return _role_summary_reply(user)
+    if intent == "consultations":
+        return _consultation_summary_reply(user)
+    if intent == "availability":
+        return _availability_reply(user)
+    if role == "patient":
+        patient = patient_for_user(user)
+        if not patient:
+            return None
+        if intent == "request_status":
+            return _request_status_reply(patient)
+        if intent == "request_detail":
+            return _request_detail_reply(patient, text)
+        if intent == "latest_results":
+            return _latest_results_reply(patient)
+        if intent == "abnormal_results":
+            return _abnormal_results_reply(patient)
+        if intent == "search_results":
+            return _search_results_reply(patient, text)
+        if intent == "access":
+            return _access_reply(patient)
+        if intent == "booking_help":
+            return _booking_reply()
+    return None
+
+
+def _llm_assisted_reply(user, text):
+    intent = _local_llm_intent(user, text)
+    return _role_reply_for_intent(user, intent, text)
+
+
 def handle_patient_chat_message(user, text):
     patient = patient_for_user(user)
     if not patient:
@@ -1889,6 +2347,10 @@ def handle_patient_chat_message(user, text):
         return _profile_reply(patient)
     if any(term in command for term in ("access", "consent", "share", "doctor request")):
         return _access_reply(patient)
+    if any(term in command for term in ("consultation", "appointment", "meeting", "video", "online session", "waiting room")):
+        return _consultation_summary_reply(user)
+    if any(term in command for term in ("availability", "calendar", "slot", "available time")):
+        return _availability_reply(user)
     if "request" in command and _find_request(patient, text):
         return _request_detail_reply(patient, text)
     if any(term in command for term in ("status", "request", "track", "progress")):
@@ -1905,6 +2367,9 @@ def handle_patient_chat_message(user, text):
         return _notifications_reply(user)
     if any(term in command for term in ("book", "booking", "appointment", "test")):
         return _booking_reply()
+    llm_reply = _llm_assisted_reply(user, text)
+    if llm_reply:
+        return llm_reply
     return ChatbotReply(
         body=(
             "I did not understand that yet. Send 'help' to see what I can do. "
@@ -1948,6 +2413,10 @@ def handle_chat_message(user, text):
 
     if any(term in command for term in ("report", "reports", "pdf", "download")):
         return _role_reports_reply(user)
+    if any(term in command for term in ("consultation", "appointment", "meeting", "video", "online session", "waiting room")):
+        return _consultation_summary_reply(user)
+    if any(term in command for term in ("availability", "calendar", "slot", "available time")):
+        return _availability_reply(user)
     if any(term in command for term in (
         "dashboard",
         "summary",
@@ -1971,6 +2440,10 @@ def handle_chat_message(user, text):
         return _role_summary_reply(user)
     if any(term in command for term in ("notification", "alert")):
         return _notifications_reply(user)
+
+    llm_reply = _llm_assisted_reply(user, text)
+    if llm_reply:
+        return llm_reply
 
     return ChatbotReply(
         body=(

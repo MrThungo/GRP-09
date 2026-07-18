@@ -210,11 +210,11 @@
 {% set assistant_role_label = (assistant_role or 'portal').replace('_', ' ')|title %}
 {% set assistant_name = 'NMB Lab Assistant' %}
 {% if assistant_role == 'patient' %}
-  {% set assistant_prompts = ['update profile', 'latest results', 'generate report', 'request status', 'abnormal results', 'access requests', 'mark notifications read', 'send email'] %}
-  {% set assistant_intro = 'Tell me what you want to do. Try "latest results", "generate report", or "update profile phone to 0712345678".' %}
+  {% set assistant_prompts = ['consultations', 'availability', 'latest results', 'request status', 'abnormal results', 'access requests', 'update profile', 'send email'] %}
+  {% set assistant_intro = 'Tell me what you want to do. Try "latest results", "consultations", "availability", or "update profile phone to 0712345678".' %}
 {% elif assistant_role == 'doctor' %}
-  {% set assistant_prompts = ['dashboard summary', 'request status', 'alerts', 'patients', 'reports', 'update profile', 'send email'] %}
-  {% set assistant_intro = 'Tell me what you want to do. Try "dashboard summary", "alerts", "update profile gender to Female", or "send email to name@example.com subject Hello message Your message".' %}
+  {% set assistant_prompts = ['consultations', 'availability', 'dashboard summary', 'alerts', 'patients', 'reports', 'update profile', 'send email'] %}
+  {% set assistant_intro = 'Tell me what you want to do. Try "consultations", "availability", "alerts", "update profile gender to Female", or "send email to name@example.com subject Hello message Your message".' %}
 {% elif assistant_role == 'lab_technician' %}
   {% set assistant_prompts = ['dashboard summary', 'work queue', 'verify queue', 'reports', 'update profile', 'send email'] %}
   {% set assistant_intro = 'Tell me what you want to do. Try "work queue", "verify queue", "update profile title to Mr", or "send email to name@example.com subject Hello message Your message".' %}

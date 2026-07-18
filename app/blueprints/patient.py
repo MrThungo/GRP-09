@@ -21,6 +21,7 @@ from ..models import (
     UserRole, AccessRequest, TITLE_OPTIONS, GENDER_OPTIONS, OnlineConsultation,
     DoctorAvailabilitySlot,
 )
+from ..notification_pages import clear_user_notifications, mark_user_notifications_read, render_user_notifications
 from ..sa_id import validate_sa_id
 from ..email import send_email
 from ..services import log_audit, notify
@@ -50,6 +51,30 @@ def _date_filter_value(name):
         return date.fromisoformat(raw)
     except ValueError:
         return None
+
+
+def _portal_url(endpoint, **values):
+    base_url = (current_app.config.get("APP_BASE_URL") or "").rstrip("/")
+    if base_url:
+        return f"{base_url}{url_for(endpoint, **values)}"
+    return url_for(endpoint, _external=True, **values)
+
+
+def _email_doctor_consultation_notice(consultation, subject, body):
+    doctor = consultation.doctor
+    if not (doctor and doctor.email):
+        return False
+    link = _portal_url("doctor.consultations")
+    return send_email(
+        [doctor.email],
+        subject,
+        (
+            f"Hello Dr. {doctor.full_name or doctor.email},\n\n"
+            f"{body}\n\n"
+            f"Open consultations: {link}\n\n"
+            "- NMB-HLab"
+        ),
+    )
 
 
 def _patient_consultation_or_404(consultation_id, room_token=None):
@@ -249,6 +274,14 @@ def request_online_consultation(consultation_id):
         f"{consultation.patient.full_name} requested an online consultation for {consultation.request.request_number}.",
         url_for("doctor.consultations"),
     )
+    _email_doctor_consultation_notice(
+        consultation,
+        f"NMB-HLab online consultation request: {consultation.request.request_number}",
+        (
+            f"{consultation.patient.full_name} requested an online consultation "
+            f"for {consultation.request.request_number}."
+        ),
+    )
     log_audit(current_user.id, "request_online_consultation", "online_consultation", consultation.id)
     db.session.commit()
     flash("Your online consultation request was sent to your doctor.", "success")
@@ -271,6 +304,14 @@ def request_in_person_consultation(consultation_id):
         "Patient prefers an in-person consultation",
         f"{consultation.patient.full_name} prefers to discuss {consultation.request.request_number} in person.",
         url_for("doctor.consultations"),
+    )
+    _email_doctor_consultation_notice(
+        consultation,
+        f"NMB-HLab in-person consultation request: {consultation.request.request_number}",
+        (
+            f"{consultation.patient.full_name} prefers to discuss "
+            f"{consultation.request.request_number} in person."
+        ),
     )
     log_audit(current_user.id, "request_in_person_consultation", "online_consultation", consultation.id)
     db.session.commit()
@@ -319,6 +360,14 @@ def book_in_person_consultation(consultation_id):
         ),
         url_for("doctor.consultations"),
     )
+    _email_doctor_consultation_notice(
+        consultation,
+        f"NMB-HLab in-person appointment booked: {consultation.request.request_number}",
+        (
+            f"{consultation.patient.full_name} booked an in-person discussion for "
+            f"{consultation.request.request_number} on {slot.starts_at.strftime('%Y-%m-%d at %H:%M')}."
+        ),
+    )
     log_audit(current_user.id, "book_in_person_consultation", "online_consultation", consultation.id, {"slot_id": slot.id})
     db.session.commit()
     flash("Your in-person appointment has been booked.", "success")
@@ -343,6 +392,14 @@ def respond_to_consultation(consultation_id):
             f"{consultation.patient.full_name} accepted the online consultation time.",
             url_for("doctor.consultations"),
         )
+        _email_doctor_consultation_notice(
+            consultation,
+            f"NMB-HLab online consultation accepted: {consultation.request.request_number}",
+            (
+                f"{consultation.patient.full_name} accepted the online consultation time"
+                f"{' for ' + consultation.scheduled_at.strftime('%Y-%m-%d at %H:%M') if consultation.scheduled_at else ''}."
+            ),
+        )
         flash("Meeting accepted. You can enter the waiting room at the scheduled time.", "success")
     elif response == "declined":
         consultation.status = "declined"
@@ -353,6 +410,14 @@ def respond_to_consultation(consultation_id):
             "Online consultation declined",
             f"{consultation.patient.full_name} declined the online consultation time.",
             url_for("doctor.consultations"),
+        )
+        _email_doctor_consultation_notice(
+            consultation,
+            f"NMB-HLab online consultation declined: {consultation.request.request_number}",
+            (
+                f"{consultation.patient.full_name} declined the online consultation time."
+                f"{' Reason: ' + consultation.decline_reason if consultation.decline_reason else ''}"
+            ),
         )
         flash("Meeting time declined. Your doctor can send another invite.", "success")
     else:
@@ -413,6 +478,8 @@ def consultation_record_video(consultation_id):
         path,
         mimetype=consultation.session_record_mime or "video/webm",
         as_attachment=False,
+        conditional=True,
+        max_age=0,
         download_name=consultation.session_record_filename or "consultation-recording.webm",
     )
 
@@ -503,17 +570,17 @@ def history_csv():
 
 @bp.route("/notifications")
 def notifications():
-    rows = (Notification.query.filter_by(user_id=current_user.id)
-            .order_by(Notification.created_at.desc()).limit(100).all())
-    return render_template("patient/notifications.html", rows=rows)
+    return render_user_notifications("patient.mark_all_read", "patient.clear_all_notifications")
 
 
 @bp.route("/notifications/mark-all-read", methods=["POST"])
 def mark_all_read():
-    Notification.query.filter_by(user_id=current_user.id, read=False).update({"read": True})
-    db.session.commit()
-    flash("All notifications marked as read.", "success")
-    return redirect(url_for("patient.notifications"))
+    return mark_user_notifications_read("patient.notifications")
+
+
+@bp.route("/notifications/clear-all", methods=["POST"])
+def clear_all_notifications():
+    return clear_user_notifications("patient.notifications")
 
 
 @bp.route("/book", methods=["GET", "POST"])

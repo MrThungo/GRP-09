@@ -21,7 +21,7 @@ from ..models import (
     GENDER_OPTIONS,
     User,
 )
-from ..notification_pages import mark_user_notifications_read, render_user_notifications
+from ..notification_pages import clear_user_notifications, mark_user_notifications_read, render_user_notifications
 from ..sa_id import validate_sa_id
 from ..services import log_audit, notify, return_item_for_review, send_email, verify_item
 
@@ -37,12 +37,17 @@ def _gate():
 
 @bp.route("/notifications")
 def notifications():
-    return render_user_notifications("technician.mark_all_read")
+    return render_user_notifications("technician.mark_all_read", "technician.clear_all_notifications")
 
 
 @bp.route("/notifications/mark-all-read", methods=["POST"])
 def mark_all_read():
     return mark_user_notifications_read("technician.notifications")
+
+
+@bp.route("/notifications/clear-all", methods=["POST"])
+def clear_all_notifications():
+    return clear_user_notifications("technician.notifications")
 
 
 def _staff_dob_from_form():

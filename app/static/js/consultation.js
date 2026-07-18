@@ -2,6 +2,8 @@
   const postJson = async (url, body) => {
     const response = await fetch(url, {
       method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(body),
     });
@@ -30,7 +32,11 @@
 
     const poll = async () => {
       try {
-        const response = await fetch(statusUrl, { headers: { Accept: "application/json" } });
+        const response = await fetch(statusUrl, {
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
         if (!response.ok) return;
         const data = await response.json();
         if (data.started) {
@@ -87,6 +93,7 @@
   let mediaRecorder = null;
   let recordingId = "";
   let recordingMimeType = "";
+  let recordingExtension = ".webm";
   let recordingCanvas = null;
   let recordingContext = null;
   let recordingCanvasStream = null;
@@ -370,7 +377,11 @@
 
   const pollSignals = async () => {
     try {
-      const response = await fetch(signalsUrl, { headers: { Accept: "application/json" } });
+      const response = await fetch(signalsUrl, {
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
       if (!response.ok) return;
       const data = await response.json();
       for (const signal of data.signals || []) {
@@ -398,7 +409,11 @@
 
   const fetchRoomStatus = async () => {
     if (!statusUrl) return;
-    const response = await fetch(statusUrl, { headers: { Accept: "application/json" } });
+    const response = await fetch(statusUrl, {
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
     if (!response.ok) return;
     const data = await response.json();
     if (role === "doctor") {
@@ -485,10 +500,43 @@
   const chooseRecordingMime = () => {
     if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
     return [
+      "video/mp4;codecs=h264,aac",
+      "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+      "video/mp4",
       "video/webm;codecs=vp9,opus",
       "video/webm;codecs=vp8,opus",
       "video/webm",
     ].find((mime) => MediaRecorder.isTypeSupported(mime)) || "";
+  };
+
+  const recordingExtensionForMime = (mime) => {
+    const value = String(mime || "").toLowerCase();
+    if (value.includes("mp4")) return ".mp4";
+    if (value.includes("ogg")) return ".ogv";
+    return ".webm";
+  };
+
+  const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+  const uploadRecordingForm = async (formFactory, label) => {
+    let lastError = null;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const response = await fetch(recordingUrl, {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+          body: formFactory(),
+        });
+        if (response.ok) return response;
+        lastError = new Error(`${label} failed with status ${response.status}`);
+      } catch (error) {
+        lastError = error;
+      }
+      await wait(650 * attempt);
+    }
+    throw lastError || new Error(`${label} failed`);
   };
 
   function addAudioStreamToRecording(stream) {
@@ -512,18 +560,15 @@
     recordingUploadQueue = recordingUploadQueue
       .then(async () => {
         if (recordingUploadFailed) return;
-        const form = new FormData();
-        form.append("recording_id", recordingId);
-        form.append("sequence", String(sequence));
-        form.append("mime", recordingMimeType || blob.type || "video/webm");
-        form.append("extension", ".webm");
-        form.append("chunk", blob, `chunk-${String(sequence).padStart(5, "0")}.webm`);
-        const response = await fetch(recordingUrl, {
-          method: "POST",
-          headers: { Accept: "application/json" },
-          body: form,
-        });
-        if (!response.ok) throw new Error("Chunk upload failed");
+        await uploadRecordingForm(() => {
+          const form = new FormData();
+          form.append("recording_id", recordingId);
+          form.append("sequence", String(sequence));
+          form.append("mime", recordingMimeType || blob.type || "video/webm");
+          form.append("extension", recordingExtension);
+          form.append("chunk", blob, `chunk-${String(sequence).padStart(5, "0")}${recordingExtension}`);
+          return form;
+        }, "Recording chunk upload");
       })
       .catch(() => {
         recordingUploadFailed = true;
@@ -534,17 +579,14 @@
     await recordingUploadQueue;
     if (recordingUploadFailed) throw new Error("Recording upload failed");
     if (!recordingChunkSequence) throw new Error("No recording data captured");
-    const form = new FormData();
-    form.append("complete", "1");
-    form.append("recording_id", recordingId);
-    form.append("mime", recordingMimeType || "video/webm");
-    form.append("extension", ".webm");
-    const response = await fetch(recordingUrl, {
-      method: "POST",
-      headers: { Accept: "application/json" },
-      body: form,
-    });
-    if (!response.ok) throw new Error("Recording finalize failed");
+    const response = await uploadRecordingForm(() => {
+      const form = new FormData();
+      form.append("complete", "1");
+      form.append("recording_id", recordingId);
+      form.append("mime", recordingMimeType || "video/webm");
+      form.append("extension", recordingExtension);
+      return form;
+    }, "Recording finalize");
     return response.json();
   };
 
@@ -557,9 +599,16 @@
     recordingContext = recordingCanvas.getContext("2d");
     if (!recordingContext || !recordingCanvas.captureStream) return;
 
-    recordingCanvasStream = recordingCanvas.captureStream(15);
+    recordingCanvasStream = recordingCanvas.captureStream(20);
     const mixedStream = new MediaStream();
-    recordingCanvasStream.getVideoTracks().forEach((track) => mixedStream.addTrack(track));
+    recordingCanvasStream.getVideoTracks().forEach((track) => {
+      try {
+        track.contentHint = "motion";
+      } catch (error) {
+        /* Browsers that do not expose contentHint can ignore this. */
+      }
+      mixedStream.addTrack(track);
+    });
 
     try {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -579,10 +628,11 @@
     }
 
     recordingMimeType = chooseRecordingMime();
+    recordingExtension = recordingExtensionForMime(recordingMimeType);
     recordingId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const recorderOptions = {
-      videoBitsPerSecond: 750000,
-      audioBitsPerSecond: 48000,
+      videoBitsPerSecond: 1100000,
+      audioBitsPerSecond: 64000,
     };
     if (recordingMimeType) recorderOptions.mimeType = recordingMimeType;
 
@@ -597,10 +647,16 @@
         return;
       }
     }
+    recordingMimeType = mediaRecorder.mimeType || recordingMimeType || "video/webm";
+    recordingExtension = recordingExtensionForMime(recordingMimeType);
     mediaRecorder.addEventListener("dataavailable", (event) => {
       if (event.data && event.data.size > 0) queueRecordingChunk(event.data);
     });
-    mediaRecorder.start(10000);
+    mediaRecorder.addEventListener("error", () => {
+      recordingUploadFailed = true;
+      setStatus("Session recording had an error; the live call can continue.");
+    });
+    mediaRecorder.start(5000);
     drawRecordingFrame();
   };
 
@@ -618,8 +674,13 @@
     mediaRecorder.stop();
     await stopped;
     if (recordingDrawTimer) window.clearTimeout(recordingDrawTimer);
+    recordingDrawTimer = null;
     if (recordingCanvasStream) recordingCanvasStream.getTracks().forEach((track) => track.stop());
+    recordingCanvasStream = null;
     if (recordingAudioContext) await recordingAudioContext.close().catch(() => {});
+    recordingAudioContext = null;
+    recordingAudioDestination = null;
+    recordingAudioSources.length = 0;
     await finalizeRecordingUpload();
     setStatus("Session video saved. Ending consultation...");
   };
@@ -642,7 +703,12 @@
     }
     setStatus("Opening secure room...");
     try {
-      const response = await fetch(startUrl, { method: "POST", headers: { Accept: "text/html,application/json" } });
+      const response = await fetch(startUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "text/html,application/json" },
+      });
       if (!response.ok) throw new Error("Start failed");
       await beginRoom(true);
       if (startButton) startButton.classList.add("hidden");

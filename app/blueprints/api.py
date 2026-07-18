@@ -336,6 +336,16 @@ def mark_read(nid):
     return jsonify({"ok": True})
 
 
+@bp.route("/notifications/clear", methods=["POST"])
+@login_required
+def clear_notifications():
+    count = Notification.query.filter_by(user_id=current_user.id).delete(
+        synchronize_session=False,
+    )
+    db.session.commit()
+    return jsonify({"ok": True, "cleared": count})
+
+
 @bp.route("/online-users")
 @login_required
 def online_users():
