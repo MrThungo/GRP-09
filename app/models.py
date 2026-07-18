@@ -50,6 +50,7 @@ CONSULTATION_STATUSES = (
     "offered",
     "online_requested",
     "in_person_requested",
+    "in_person_booked",
     "invited",
     "accepted",
     "declined",
@@ -416,6 +417,27 @@ class OnlineConsultation(db.Model):
         return self.status == "started" and self.doctor_started_at is not None
 
 
+class DoctorAvailabilitySlot(db.Model):
+    __tablename__ = "doctor_availability_slots"
+    id = Column(String(36), primary_key=True, default=_uuid)
+    doctor_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    starts_at = Column(DateTime, nullable=False, index=True)
+    ends_at = Column(DateTime, nullable=False)
+    location = Column(String(160))
+    note = Column(Text)
+    status = Column(String(20), nullable=False, default="open")
+    booked_consultation_id = Column(String(36), ForeignKey("online_consultations.id", ondelete="SET NULL"), index=True)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    doctor = relationship("User", foreign_keys=[doctor_id], backref="availability_slots")
+    booked_consultation = relationship("OnlineConsultation", foreign_keys=[booked_consultation_id], backref="availability_slot")
+
+    @property
+    def is_open(self):
+        return self.status == "open" and self.booked_consultation_id is None
+
+
 class ConsultationSignal(db.Model):
     __tablename__ = "consultation_signals"
     id = Column(String(36), primary_key=True, default=_uuid)
@@ -432,6 +454,8 @@ class ConsultationSignal(db.Model):
 Index("idx_online_consults_doctor_status", OnlineConsultation.doctor_id, OnlineConsultation.status, OnlineConsultation.scheduled_at)
 Index("idx_online_consults_patient_status", OnlineConsultation.patient_id, OnlineConsultation.status, OnlineConsultation.scheduled_at)
 Index("idx_online_consults_request_created", OnlineConsultation.request_id, OnlineConsultation.created_at)
+Index("idx_doctor_availability_open", DoctorAvailabilitySlot.doctor_id, DoctorAvailabilitySlot.status, DoctorAvailabilitySlot.starts_at)
+Index("idx_doctor_availability_booking", DoctorAvailabilitySlot.booked_consultation_id, DoctorAvailabilitySlot.status)
 Index("idx_consult_signals_room_created", ConsultationSignal.consultation_id, ConsultationSignal.created_at)
 
 

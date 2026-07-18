@@ -1,10 +1,11 @@
 {% extends "layouts/base.html" %}
-{% block page_title %}Online consultations{% endblock %}
+{% block page_title %}Consultations{% endblock %}
 {% block content %}
 {% set labels = {
   'offered': 'Awaiting patient choice',
   'online_requested': 'Online requested',
   'in_person_requested': 'In-person requested',
+  'in_person_booked': 'In-person booked',
   'invited': 'Invite sent',
   'accepted': 'Accepted',
   'declined': 'Declined',
@@ -16,11 +17,79 @@
 <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
   <div>
     <p class="section-kicker">Invite-only sessions</p>
-    <h1 class="mt-1 text-2xl font-black text-white">Online consultations</h1>
-    <p class="mt-1 text-sm text-slate-400">Set meeting times for patients who requested online result discussions.</p>
+    <h1 class="mt-1 text-2xl font-black text-white">Consultations</h1>
+    <p class="mt-1 text-sm text-slate-400">Set online invites and publish in-person availability for result discussions.</p>
   </div>
   <a href="{{ url_for('doctor.requests_list') }}?status=released" class="btn-secondary px-3 py-2 text-sm">Released requests</a>
 </div>
+
+<section class="surface-card mb-5 p-4">
+  <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <div class="min-w-0">
+      <p class="section-kicker">In-person availability</p>
+      <h2 class="mt-1 text-lg font-bold text-white">Add times patients can book</h2>
+      <p class="mt-1 text-sm text-slate-400">Patients who choose in-person consultation will see open slots on a small calendar.</p>
+    </div>
+    <form method="post" action="{{ url_for('doctor.create_availability_slot') }}"
+          class="grid w-full gap-3 rounded-lg border border-slate-800 bg-slate-950 p-3 md:grid-cols-[1fr_auto_1fr_1fr_auto] xl:max-w-4xl">
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Starts</label>
+        <input name="starts_at" type="datetime-local" required class="mt-1 w-full px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Minutes</label>
+        <input name="duration_minutes" type="number" min="10" max="240" value="30" class="mt-1 w-28 px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Location</label>
+        <input name="location" type="text" placeholder="Room / clinic" class="mt-1 w-full px-3 py-2 text-sm">
+      </div>
+      <div>
+        <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Note</label>
+        <input name="note" type="text" placeholder="Optional" class="mt-1 w-full px-3 py-2 text-sm">
+      </div>
+      <div class="flex items-end">
+        <button class="btn-primary w-full px-3 py-2 text-sm" type="submit">Add</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+    {% for slot in availability_slots %}
+      <div class="in-person-slot-card">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <div class="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">{{ slot.starts_at.strftime('%a %d %b') }}</div>
+            <div class="mt-1 text-base font-black text-white">{{ slot.starts_at.strftime('%H:%M') }} - {{ slot.ends_at.strftime('%H:%M') }}</div>
+          </div>
+          <span class="rounded px-2 py-1 text-[11px] font-bold {{ 'bg-emerald-950 text-emerald-200' if slot.status == 'open' else 'bg-sky-950 text-sky-200' }}">
+            {{ slot.status|title }}
+          </span>
+        </div>
+        {% if slot.location %}
+          <div class="mt-2 text-sm text-slate-300">{{ slot.location }}</div>
+        {% endif %}
+        {% if slot.note %}
+          <div class="mt-1 text-xs text-slate-500">{{ slot.note }}</div>
+        {% endif %}
+        {% if slot.booked_consultation %}
+          <div class="mt-3 rounded border border-slate-800 bg-slate-950/70 p-2 text-xs text-slate-300">
+            Booked by {{ slot.booked_consultation.patient.full_name if slot.booked_consultation.patient else 'patient' }}
+            for {{ slot.booked_consultation.request.request_number if slot.booked_consultation.request else 'results' }}.
+          </div>
+        {% elif slot.status == 'open' %}
+          <form method="post" action="{{ url_for('doctor.cancel_availability_slot', slot_id=slot.id) }}" class="mt-3">
+            <button class="btn-secondary w-full px-3 py-2 text-xs" type="submit">Cancel slot</button>
+          </form>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400 sm:col-span-2 xl:col-span-4">
+        No upcoming in-person availability yet.
+      </div>
+    {% endfor %}
+  </div>
+</section>
 
 <div class="grid gap-4">
   {% for c in consultations %}
@@ -106,7 +175,13 @@
           </div>
         {% elif c.status == 'in_person_requested' %}
           <div class="rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">
-            The patient requested an in-person discussion. Use Messages or your normal scheduling process to confirm the visit.
+            The patient requested an in-person discussion. Add availability above so they can book a time from their portal.
+          </div>
+        {% elif c.status == 'in_person_booked' %}
+          <div class="rounded-lg border border-emerald-900 bg-emerald-950/25 p-3 text-sm text-emerald-100">
+            In-person appointment confirmed for
+            <strong>{{ c.scheduled_at.strftime('%Y-%m-%d %H:%M') if c.scheduled_at else 'the booked slot' }}</strong>.
+            {% if c.invite_message %}<div class="mt-1 text-emerald-200/80">Location: {{ c.invite_message }}</div>{% endif %}
           </div>
         {% elif c.status == 'offered' %}
           <div class="rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">

@@ -1403,6 +1403,58 @@ body.confirm-modal-open {
   word-break: break-word;
 }
 
+.in-person-slot-card,
+.in-person-calendar-slot {
+  border: 1px solid rgba(51, 65, 85, 0.9);
+  border-radius: .5rem;
+  background: rgba(2, 6, 23, 0.72);
+  min-width: 0;
+}
+
+.in-person-slot-card {
+  padding: .9rem;
+}
+
+.in-person-calendar {
+  display: grid;
+  gap: .65rem;
+}
+
+.in-person-calendar-slot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .75rem;
+  padding: .7rem;
+}
+
+.in-person-calendar-slot > div:first-of-type {
+  display: grid;
+  min-width: 3.2rem;
+  place-items: center;
+  border-radius: .5rem;
+  background: rgba(14, 116, 144, 0.18);
+  padding: .45rem .35rem;
+  color: #bae6fd;
+  text-align: center;
+}
+
+.in-person-calendar-slot span,
+.in-person-calendar-slot em {
+  color: #7dd3fc;
+  font-size: .68rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.in-person-calendar-slot strong {
+  color: #fff;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
 @media (min-width: 900px) {
   .consult-video-grid {
     grid-template-columns: minmax(0, 1.7fr) minmax(18rem, .8fr);

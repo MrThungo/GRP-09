@@ -224,6 +224,8 @@ def _ensure_indexes(app):
             ("online_consultations", "idx_online_consults_doctor_status", "doctor_id, status, scheduled_at"),
             ("online_consultations", "idx_online_consults_patient_status", "patient_id, status, scheduled_at"),
             ("online_consultations", "idx_online_consults_request_created", "request_id, created_at"),
+            ("doctor_availability_slots", "idx_doctor_availability_open", "doctor_id, status, starts_at"),
+            ("doctor_availability_slots", "idx_doctor_availability_booking", "booked_consultation_id, status"),
             ("consultation_signals", "idx_consult_signals_room_created", "consultation_id, created_at"),
             ("consumables", "idx_consumables_stock", "deleted_at, current_stock, reorder_level"),
         ]:
@@ -236,6 +238,17 @@ def _env_bool(name, default=False):
     if v is None:
         return default
     return v.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_list(name, default=None):
+    raw = os.environ.get(name)
+    if raw is None:
+        return list(default or [])
+    return [
+        item.strip()
+        for item in raw.replace("\n", ",").split(",")
+        if item.strip()
+    ]
 
 
 def _static_asset_version(app):
@@ -271,6 +284,14 @@ def create_app():
     app.config["LIVE_SNAPSHOT_CACHE_SECONDS"] = int(
         os.environ.get("LIVE_SNAPSHOT_CACHE_SECONDS", "3")
     )
+    app.config["WEBRTC_STUN_URLS"] = _env_list(
+        "WEBRTC_STUN_URLS",
+        ["stun:stun.l.google.com:19302"],
+    )
+    app.config["WEBRTC_TURN_URLS"] = _env_list("WEBRTC_TURN_URLS")
+    app.config["WEBRTC_TURN_USERNAME"] = os.environ.get("WEBRTC_TURN_USERNAME", "")
+    app.config["WEBRTC_TURN_CREDENTIAL"] = os.environ.get("WEBRTC_TURN_CREDENTIAL", "")
+    app.config["WEBRTC_FORCE_RELAY"] = _env_bool("WEBRTC_FORCE_RELAY", False)
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = timedelta(days=7)
     app.config["STATIC_ASSET_VERSION"] = _static_asset_version(app)
 

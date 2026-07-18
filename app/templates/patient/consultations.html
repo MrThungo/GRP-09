@@ -5,6 +5,7 @@
   'offered': 'Choose consultation type',
   'online_requested': 'Online requested',
   'in_person_requested': 'In-person requested',
+  'in_person_booked': 'In-person booked',
   'invited': 'Respond to invite',
   'accepted': 'Accepted',
   'declined': 'Declined',
@@ -40,9 +41,10 @@
         </p>
         <p class="mt-1 text-sm text-slate-400">
           {% if c.scheduled_at %}
-            Meeting: <span class="text-slate-200">{{ c.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</span>
+            {{ 'Appointment' if c.patient_preference == 'in_person' else 'Meeting' }}:
+            <span class="text-slate-200">{{ c.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</span>
           {% else %}
-            No online meeting time yet.
+            No consultation time yet.
           {% endif %}
         </p>
       </div>

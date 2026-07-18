@@ -30,6 +30,7 @@ from ..models import (
     GENDER_OPTIONS,
     OnlineConsultation,
     ConsultationSignal,
+    DoctorAvailabilitySlot,
 )
 from ..notification_pages import mark_user_notifications_read, render_user_notifications
 from ..reports import build_request_results_pdf
@@ -353,7 +354,7 @@ def _active_consultation_for_request(req):
                 OnlineConsultation.doctor_id == current_user.id,
                 OnlineConsultation.status.in_((
                     "offered", "online_requested", "in_person_requested",
-                    "invited", "accepted", "started",
+                    "in_person_booked", "invited", "accepted", "started",
                 )),
             )
             .order_by(OnlineConsultation.created_at.desc())
@@ -411,6 +412,21 @@ def _doctor_consultation_or_404(consultation_id, room_token=None):
     return consultation
 
 
+def _doctor_availability_slot_or_404(slot_id):
+    slot = (DoctorAvailabilitySlot.query
+            .options(
+                selectinload(DoctorAvailabilitySlot.booked_consultation)
+                .selectinload(OnlineConsultation.patient),
+                selectinload(DoctorAvailabilitySlot.booked_consultation)
+                .selectinload(OnlineConsultation.request),
+            )
+            .filter_by(id=slot_id, doctor_id=current_user.id)
+            .first())
+    if not slot:
+        abort(404)
+    return slot
+
+
 def _parse_datetime_local(value):
     value = (value or "").strip()
     if not value:
@@ -419,6 +435,24 @@ def _parse_datetime_local(value):
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def _upcoming_availability_slots():
+    return (DoctorAvailabilitySlot.query
+            .options(
+                selectinload(DoctorAvailabilitySlot.booked_consultation)
+                .selectinload(OnlineConsultation.patient),
+                selectinload(DoctorAvailabilitySlot.booked_consultation)
+                .selectinload(OnlineConsultation.request),
+            )
+            .filter(
+                DoctorAvailabilitySlot.doctor_id == current_user.id,
+                DoctorAvailabilitySlot.ends_at >= datetime.now(),
+                DoctorAvailabilitySlot.status != "cancelled",
+            )
+            .order_by(DoctorAvailabilitySlot.starts_at.asc())
+            .limit(40)
+            .all())
 
 
 def _store_consultation_record(consultation):
@@ -531,7 +565,68 @@ def consultations():
                 OnlineConsultation.created_at.desc(),
             )
             .all())
-    return render_template("doctor/consultations.html", consultations=rows)
+    return render_template(
+        "doctor/consultations.html",
+        consultations=rows,
+        availability_slots=_upcoming_availability_slots(),
+    )
+
+
+@bp.route("/consultations/availability", methods=["POST"])
+def create_availability_slot():
+    starts_at = _parse_datetime_local(request.form.get("starts_at"))
+    if not starts_at:
+        flash("Choose a valid available date and time.", "error")
+        return redirect(url_for("doctor.consultations"))
+    try:
+        duration = int(request.form.get("duration_minutes") or 30)
+    except ValueError:
+        duration = 30
+    duration = min(240, max(10, duration))
+    ends_at = starts_at + timedelta(minutes=duration)
+    if starts_at < datetime.now() - timedelta(minutes=5):
+        flash("Availability cannot be created in the past.", "error")
+        return redirect(url_for("doctor.consultations"))
+
+    overlap = (DoctorAvailabilitySlot.query
+               .filter(
+                   DoctorAvailabilitySlot.doctor_id == current_user.id,
+                   DoctorAvailabilitySlot.status.in_(("open", "booked")),
+                   DoctorAvailabilitySlot.starts_at < ends_at,
+                   DoctorAvailabilitySlot.ends_at > starts_at,
+               )
+               .first())
+    if overlap:
+        flash("That availability overlaps with another open slot.", "error")
+        return redirect(url_for("doctor.consultations"))
+
+    slot = DoctorAvailabilitySlot(
+        doctor_id=current_user.id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        location=(request.form.get("location") or "").strip() or None,
+        note=(request.form.get("note") or "").strip() or None,
+        status="open",
+    )
+    db.session.add(slot)
+    db.session.flush()
+    log_audit(current_user.id, "create_availability_slot", "doctor_availability_slot", slot.id)
+    db.session.commit()
+    flash("In-person availability added.", "success")
+    return redirect(url_for("doctor.consultations"))
+
+
+@bp.route("/consultations/availability/<slot_id>/cancel", methods=["POST"])
+def cancel_availability_slot(slot_id):
+    slot = _doctor_availability_slot_or_404(slot_id)
+    if slot.status == "booked" or slot.booked_consultation_id:
+        flash("Booked appointment slots cannot be cancelled here. Contact the patient first.", "error")
+        return redirect(url_for("doctor.consultations"))
+    slot.status = "cancelled"
+    log_audit(current_user.id, "cancel_availability_slot", "doctor_availability_slot", slot.id)
+    db.session.commit()
+    flash("Availability slot cancelled.", "success")
+    return redirect(url_for("doctor.consultations"))
 
 
 @bp.route("/consultations/<consultation_id>/invite", methods=["POST"])

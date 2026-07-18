@@ -5,6 +5,7 @@
   'offered': 'Choose consultation type',
   'online_requested': 'Online requested',
   'in_person_requested': 'In-person requested',
+  'in_person_booked': 'In-person booked',
   'invited': 'Respond to invite',
   'accepted': 'Accepted',
   'declined': 'Declined',
@@ -31,7 +32,9 @@
     </p>
     {% if consultation.scheduled_at %}
       <div class="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-4">
-        <div class="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Meeting time</div>
+        <div class="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+          {{ 'Appointment time' if consultation.patient_preference == 'in_person' else 'Meeting time' }}
+        </div>
         <div class="mt-1 text-lg font-bold text-white">{{ consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</div>
         {% if consultation.scheduled_end_at %}
           <div class="text-sm text-slate-400">Ends around {{ consultation.scheduled_end_at.strftime('%H:%M') }}</div>
@@ -61,8 +64,44 @@
       <h2 class="text-lg font-bold text-white">Online request sent</h2>
       <p class="mt-2 text-sm text-slate-400">Your doctor will set a private meeting time and send an invite here.</p>
     {% elif consultation.status == 'in_person_requested' %}
-      <h2 class="text-lg font-bold text-white">In-person preference sent</h2>
-      <p class="mt-2 text-sm text-slate-400">Your doctor has been told that you prefer to discuss these results in person.</p>
+      <h2 class="text-lg font-bold text-white">Choose an in-person time</h2>
+      <p class="mt-2 text-sm text-slate-400">Book from your doctor's available consultation times.</p>
+      {% if availability_slots %}
+        <div class="in-person-calendar mt-4">
+          {% for slot in availability_slots %}
+            <form method="post" action="{{ url_for('patient.book_in_person_consultation', consultation_id=consultation.id) }}"
+                  class="in-person-calendar-slot">
+              <input type="hidden" name="slot_id" value="{{ slot.id }}">
+              <div>
+                <span>{{ slot.starts_at.strftime('%a') }}</span>
+                <strong>{{ slot.starts_at.strftime('%d') }}</strong>
+                <em>{{ slot.starts_at.strftime('%b') }}</em>
+              </div>
+              <div class="min-w-0">
+                <div class="font-bold text-white">{{ slot.starts_at.strftime('%H:%M') }} - {{ slot.ends_at.strftime('%H:%M') }}</div>
+                <div class="truncate text-xs text-slate-400">{{ slot.location or 'Doctor consultation room' }}</div>
+                {% if slot.note %}<div class="truncate text-[11px] text-slate-500">{{ slot.note }}</div>{% endif %}
+              </div>
+              <button class="btn-primary px-3 py-2 text-xs" type="submit">Book</button>
+            </form>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-400">
+          No available in-person times are open yet. This page updates automatically when your doctor adds times.
+        </div>
+      {% endif %}
+    {% elif consultation.status == 'in_person_booked' %}
+      <h2 class="text-lg font-bold text-white">In-person appointment booked</h2>
+      <p class="mt-2 text-sm text-slate-400">
+        Your appointment is confirmed for
+        <span class="font-semibold text-slate-200">{{ consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') if consultation.scheduled_at else 'the selected time' }}</span>.
+      </p>
+      {% if consultation.invite_message %}
+        <div class="mt-4 rounded-lg border border-slate-800 bg-slate-950 p-4 text-sm text-slate-300">
+          Location: {{ consultation.invite_message }}
+        </div>
+      {% endif %}
     {% elif consultation.status == 'invited' %}
       <h2 class="text-lg font-bold text-white">Respond to meeting invite</h2>
       <p class="mt-2 text-sm text-slate-400">Accept to unlock the waiting room. Decline if the time does not work.</p>

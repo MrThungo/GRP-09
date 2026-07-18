@@ -37,6 +37,7 @@
   'offered': 'Awaiting patient choice',
   'online_requested': 'Patient requested online',
   'in_person_requested': 'Patient prefers in person',
+  'in_person_booked': 'In-person booked',
   'invited': 'Invite sent',
   'accepted': 'Accepted',
   'declined': 'Declined',
@@ -57,7 +58,7 @@
           Status:
           <span class="font-semibold text-sky-200">{{ consultation_labels.get(consultation.status, consultation.status.replace('_', ' ')|title) }}</span>
           {% if consultation.scheduled_at %}
-            <span class="ml-2">Meeting: {{ consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</span>
+            <span class="ml-2">{{ 'Appointment' if consultation.patient_preference == 'in_person' else 'Meeting' }}: {{ consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') }}</span>
           {% endif %}
         </p>
       {% endif %}

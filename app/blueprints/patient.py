@@ -19,6 +19,7 @@ from ..models import (
     Patient, TestRequest, TestRequestItem, TestCatalog, Notification, PRIORITIES,
     REQUEST_STATUSES, Condition, Allergy, Medication, ConsentGrant, User,
     UserRole, AccessRequest, TITLE_OPTIONS, GENDER_OPTIONS, OnlineConsultation,
+    DoctorAvailabilitySlot,
 )
 from ..sa_id import validate_sa_id
 from ..email import send_email
@@ -90,6 +91,19 @@ def _latest_consultations_by_request(patient_id, request_ids):
     for row in rows:
         by_request.setdefault(row.request_id, row)
     return by_request
+
+
+def _available_in_person_slots(doctor_id):
+    return (DoctorAvailabilitySlot.query
+            .filter(
+                DoctorAvailabilitySlot.doctor_id == doctor_id,
+                DoctorAvailabilitySlot.status == "open",
+                DoctorAvailabilitySlot.booked_consultation_id.is_(None),
+                DoctorAvailabilitySlot.starts_at >= datetime.now(),
+            )
+            .order_by(DoctorAvailabilitySlot.starts_at.asc())
+            .limit(28)
+            .all())
 
 
 @bp.route("/")
@@ -208,7 +222,14 @@ def consultations():
 @bp.route("/consultations/<consultation_id>")
 def consultation_detail(consultation_id):
     consultation = _patient_consultation_or_404(consultation_id)
-    return render_template("patient/consultation_detail.html", consultation=consultation)
+    availability_slots = []
+    if consultation.status in ("offered", "in_person_requested", "declined"):
+        availability_slots = _available_in_person_slots(consultation.doctor_id)
+    return render_template(
+        "patient/consultation_detail.html",
+        consultation=consultation,
+        availability_slots=availability_slots,
+    )
 
 
 @bp.route("/consultations/<consultation_id>/online", methods=["POST"])
@@ -253,7 +274,54 @@ def request_in_person_consultation(consultation_id):
     )
     log_audit(current_user.id, "request_in_person_consultation", "online_consultation", consultation.id)
     db.session.commit()
-    flash("Your doctor has been told that you prefer an in-person discussion.", "success")
+    if _available_in_person_slots(consultation.doctor_id):
+        flash("Choose one of your doctor's available in-person times.", "success")
+    else:
+        flash("Your doctor has been told that you prefer an in-person discussion. Available times will appear here.", "success")
+    return redirect(url_for("patient.consultation_detail", consultation_id=consultation.id))
+
+
+@bp.route("/consultations/<consultation_id>/in-person/book", methods=["POST"])
+def book_in_person_consultation(consultation_id):
+    consultation = _patient_consultation_or_404(consultation_id)
+    if consultation.status not in ("offered", "in_person_requested", "declined"):
+        flash("This consultation choice has already moved forward.", "error")
+        return redirect(url_for("patient.consultation_detail", consultation_id=consultation.id))
+    slot_id = (request.form.get("slot_id") or "").strip()
+    slot = (DoctorAvailabilitySlot.query
+            .filter_by(
+                id=slot_id,
+                doctor_id=consultation.doctor_id,
+                status="open",
+                booked_consultation_id=None,
+            )
+            .first())
+    if not slot or slot.starts_at < datetime.now():
+        flash("That time is no longer available. Please choose another slot.", "error")
+        return redirect(url_for("patient.consultation_detail", consultation_id=consultation.id))
+
+    slot.status = "booked"
+    slot.booked_consultation_id = consultation.id
+    consultation.status = "in_person_booked"
+    consultation.patient_preference = "in_person"
+    consultation.patient_response = "accepted"
+    consultation.patient_responded_at = datetime.now()
+    consultation.scheduled_at = slot.starts_at
+    consultation.scheduled_end_at = slot.ends_at
+    consultation.decline_reason = None
+    consultation.invite_message = slot.location
+    notify(
+        consultation.doctor_id,
+        "In-person consultation booked",
+        (
+            f"{consultation.patient.full_name} booked an in-person discussion for "
+            f"{consultation.request.request_number} on {slot.starts_at.strftime('%Y-%m-%d at %H:%M')}."
+        ),
+        url_for("doctor.consultations"),
+    )
+    log_audit(current_user.id, "book_in_person_consultation", "online_consultation", consultation.id, {"slot_id": slot.id})
+    db.session.commit()
+    flash("Your in-person appointment has been booked.", "success")
     return redirect(url_for("patient.consultation_detail", consultation_id=consultation.id))
 
 

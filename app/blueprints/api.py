@@ -17,6 +17,7 @@ from ..models import (
     ChatMessage,
     Consumable,
     ConsumableOrder,
+    DoctorAvailabilitySlot,
     Notification,
     OnlineConsultation,
     Patient,
@@ -156,6 +157,22 @@ def _scoped_access_request_query(role, patient):
     return AccessRequest.query
 
 
+def _scoped_availability_query(role, patient):
+    if role == "doctor":
+        return DoctorAvailabilitySlot.query.filter(DoctorAvailabilitySlot.doctor_id == current_user.id)
+    if role == "patient" and patient:
+        doctor_ids = (
+            OnlineConsultation.query
+            .with_entities(OnlineConsultation.doctor_id)
+            .filter(OnlineConsultation.patient_id == patient.id)
+            .distinct()
+        )
+        return DoctorAvailabilitySlot.query.filter(DoctorAvailabilitySlot.doctor_id.in_(doctor_ids))
+    if role == "patient":
+        return DoctorAvailabilitySlot.query.filter(DoctorAvailabilitySlot.id == "__none__")
+    return DoctorAvailabilitySlot.query
+
+
 def _live_snapshot_payload():
     role = current_user.primary_role
     patient = _patient_for_current_user() if role == "patient" else None
@@ -170,6 +187,7 @@ def _live_snapshot_payload():
     samples = _scoped_sample_query(role, patient)
     consultations = _scoped_consultation_query(role, patient)
     access_requests = _scoped_access_request_query(role, patient)
+    availability = _scoped_availability_query(role, patient)
 
     payload = {
         "role": role,
@@ -200,6 +218,9 @@ def _live_snapshot_payload():
         "access_created": _iso(_max_dt(access_requests, AccessRequest.created_at)),
         "access_responded": _iso(_max_dt(access_requests, AccessRequest.responded_at)),
         "access_statuses": _group_counts(access_requests, AccessRequest.status),
+        "availability_created": _iso(_max_dt(availability, DoctorAvailabilitySlot.created_at)),
+        "availability_updated": _iso(_max_dt(availability, DoctorAvailabilitySlot.updated_at)),
+        "availability_statuses": _group_counts(availability, DoctorAvailabilitySlot.status),
     }
 
     if role in ("lab_manager", "admin"):
@@ -354,6 +375,47 @@ def online_users():
             for u in rows
         ],
     })
+
+
+def _webrtc_ice_server_payload():
+    ice_servers = []
+    stun_urls = [
+        url for url in current_app.config.get("WEBRTC_STUN_URLS", [])
+        if url
+    ]
+    turn_urls = [
+        url for url in current_app.config.get("WEBRTC_TURN_URLS", [])
+        if url
+    ]
+    turn_username = current_app.config.get("WEBRTC_TURN_USERNAME") or ""
+    turn_credential = current_app.config.get("WEBRTC_TURN_CREDENTIAL") or ""
+    turn_configured = bool(turn_urls and turn_username and turn_credential)
+
+    if stun_urls:
+        ice_servers.append({"urls": stun_urls})
+    if turn_configured:
+        ice_servers.append({
+            "urls": turn_urls,
+            "username": turn_username,
+            "credential": turn_credential,
+        })
+
+    payload = {
+        "iceServers": ice_servers,
+        "turnConfigured": turn_configured,
+    }
+    if current_app.config.get("WEBRTC_FORCE_RELAY"):
+        payload["iceTransportPolicy"] = "relay"
+    return payload
+
+
+@bp.route("/consultations/<consultation_id>/<room_token>/ice-servers")
+@login_required
+def consultation_ice_servers(consultation_id, room_token):
+    """Return browser ICE configuration for an invite-only consultation."""
+    _consultation_participant_or_404(consultation_id, room_token)
+    payload = _webrtc_ice_server_payload()
+    return jsonify(payload)
 
 
 @bp.route("/consultations/<consultation_id>/<room_token>/status")

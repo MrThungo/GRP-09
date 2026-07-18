@@ -7,6 +7,7 @@
          data-started="{{ '1' if consultation.status == 'started' else '0' }}"
          data-status-url="{{ url_for('api.consultation_status', consultation_id=consultation.id, room_token=consultation.room_token) }}"
          data-signals-url="{{ url_for('api.consultation_signals', consultation_id=consultation.id, room_token=consultation.room_token) }}"
+         data-ice-servers-url="{{ url_for('api.consultation_ice_servers', consultation_id=consultation.id, room_token=consultation.room_token) }}"
          data-recording-url="{{ url_for('api.consultation_recording', consultation_id=consultation.id, room_token=consultation.room_token) if role == 'doctor' else '' }}"
          {% if role == 'doctor' %}
          data-start-url="{{ url_for('doctor.start_consultation', consultation_id=consultation.id) }}"

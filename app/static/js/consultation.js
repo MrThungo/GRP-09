@@ -55,6 +55,7 @@
   const role = room.dataset.role;
   const statusUrl = room.dataset.statusUrl;
   const signalsUrl = room.dataset.signalsUrl;
+  const iceServersUrl = room.dataset.iceServersUrl;
   const startUrl = room.dataset.startUrl;
   const recordingUrl = room.dataset.recordingUrl;
   const startedOnLoad = room.dataset.started === "1";
@@ -76,7 +77,12 @@
   let signalTimer = null;
   let statusTimer = null;
   let offerSent = false;
+  let iceServerConfigPromise = null;
+  let turnRelayConfigured = false;
+  let restartingIce = false;
+  const pendingIceCandidates = [];
   const seenSignals = new Set();
+  const fallbackIceServers = [{ urls: ["stun:stun.l.google.com:19302"] }];
 
   let mediaRecorder = null;
   let recordingId = "";
@@ -132,6 +138,50 @@
     if (playPromise && playPromise.catch) playPromise.catch(() => {});
   };
 
+  const normalizeIceServers = (servers) => {
+    if (!Array.isArray(servers)) return [];
+    return servers.map((server) => {
+      const rawUrls = server && server.urls;
+      const urls = Array.isArray(rawUrls)
+        ? rawUrls.filter(Boolean)
+        : (rawUrls ? [rawUrls] : []);
+      if (!urls.length) return null;
+      const entry = { urls };
+      if (server.username) entry.username = server.username;
+      if (server.credential) entry.credential = server.credential;
+      return entry;
+    }).filter(Boolean);
+  };
+
+  const loadIceServerConfig = async () => {
+    if (iceServerConfigPromise) return iceServerConfigPromise;
+    iceServerConfigPromise = (async () => {
+      if (!iceServersUrl) return { iceServers: fallbackIceServers };
+      try {
+        const response = await fetch(iceServersUrl, {
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        if (!response.ok) throw new Error("ICE config request failed");
+        const data = await response.json();
+        const iceServers = normalizeIceServers(data.iceServers);
+        turnRelayConfigured = !!data.turnConfigured;
+        const config = {
+          iceServers: iceServers.length ? iceServers : fallbackIceServers,
+        };
+        if (data.iceTransportPolicy === "relay") {
+          config.iceTransportPolicy = "relay";
+        }
+        return config;
+      } catch (error) {
+        turnRelayConfigured = false;
+        return { iceServers: fallbackIceServers };
+      }
+    })();
+    return iceServerConfigPromise;
+  };
+
   const hasLiveVideo = (stream) => (
     !!stream && stream.getVideoTracks().some((track) => track.readyState === "live" && track.enabled)
   );
@@ -166,12 +216,68 @@
     }
   };
 
+  const connectionFailureMessage = () => {
+    if (turnRelayConfigured) {
+      return "Connection dropped. Rebuilding the video link...";
+    }
+    if (role === "doctor") {
+      return "Connection failed. Add TURN relay settings on PythonAnywhere, then retry.";
+    }
+    return "Connection could not reach the doctor. Please stay here while it retries.";
+  };
+
+  const flushPendingIceCandidates = async (pc) => {
+    if (!pc.remoteDescription || !pendingIceCandidates.length) return;
+    while (pendingIceCandidates.length) {
+      const candidate = pendingIceCandidates.shift();
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (error) {
+        /* Stale candidates can be ignored after a reconnect attempt. */
+      }
+    }
+  };
+
+  const requestIceRestart = () => {
+    if (restartingIce) return;
+    restartingIce = true;
+    window.setTimeout(() => {
+      restartingIce = false;
+    }, 7000);
+
+    const restart = async () => {
+      if (role === "doctor") {
+        await createOffer({ restart: true });
+      } else {
+        await sendSignal("ready", {
+          role,
+          reason: "ice_failed",
+          at: new Date().toISOString(),
+        });
+      }
+    };
+    restart().catch(() => {});
+  };
+
+  const updatePeerConnectionStatus = (state) => {
+    if (state === "checking" || state === "connecting") {
+      setStatus("Connecting securely...");
+    } else if (state === "connected" || state === "completed") {
+      setStatus("Connected securely.");
+    } else if (state === "disconnected") {
+      setStatus("Connection interrupted. Trying to reconnect...");
+    } else if (state === "failed") {
+      setStatus(connectionFailureMessage());
+      requestIceRestart();
+    } else if (state === "closed") {
+      setStatus("The video session has ended.");
+    }
+  };
+
   const ensurePeer = async () => {
     if (peer) return peer;
     await ensureMedia();
-    peer = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
+    peer = new RTCPeerConnection(await loadIceServerConfig());
 
     if (localStream) {
       localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
@@ -201,24 +307,27 @@
 
     peer.onconnectionstatechange = () => {
       if (!peer) return;
-      const state = peer.connectionState;
-      if (state === "connected") setStatus("Connected securely.");
-      if (state === "disconnected") setStatus("Connection interrupted. Trying to reconnect...");
-      if (state === "failed") setStatus("Connection failed. Refresh the room to retry.");
+      updatePeerConnectionStatus(peer.connectionState);
+    };
+
+    peer.oniceconnectionstatechange = () => {
+      if (!peer) return;
+      updatePeerConnectionStatus(peer.iceConnectionState);
     };
 
     return peer;
   };
 
-  const createOffer = async () => {
-    if (offerSent) return;
+  const createOffer = async (options = {}) => {
+    const restart = options.restart === true;
+    if (offerSent && !restart) return;
     const pc = await ensurePeer();
     if (pc.signalingState !== "stable") return;
-    const offer = await pc.createOffer();
+    const offer = restart ? await pc.createOffer({ iceRestart: true }) : await pc.createOffer();
     await pc.setLocalDescription(offer);
     await sendSignal("offer", pc.localDescription);
     offerSent = true;
-    setStatus("Session open. Waiting for the patient to connect...");
+    setStatus(restart ? "Rebuilding the secure video link..." : "Session open. Waiting for the patient to connect...");
   };
 
   const handleSignal = async (signal) => {
@@ -230,23 +339,30 @@
     if (signal.type === "offer") {
       if (pc.signalingState !== "stable") return;
       await pc.setRemoteDescription(new RTCSessionDescription(payload));
+      await flushPendingIceCandidates(pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await sendSignal("answer", pc.localDescription);
       setStatus("Joining the secure video session...");
     } else if (signal.type === "answer") {
-      if (!pc.currentRemoteDescription && pc.signalingState !== "stable") {
+      if (pc.signalingState === "have-local-offer") {
         await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        await flushPendingIceCandidates(pc);
       }
       setStatus("Connecting securely...");
     } else if (signal.type === "ice") {
+      const candidate = new RTCIceCandidate(payload);
+      if (!pc.remoteDescription || !pc.remoteDescription.type) {
+        pendingIceCandidates.push(candidate);
+        return;
+      }
       try {
-        await pc.addIceCandidate(new RTCIceCandidate(payload));
+        await pc.addIceCandidate(candidate);
       } catch (error) {
         /* Candidate timing can race session descriptions; the next one usually succeeds. */
       }
     } else if (signal.type === "ready" && role === "doctor") {
-      await createOffer();
+      await createOffer({ restart: payload.reason === "ice_failed" });
     } else if (signal.type === "leave") {
       setStatus("The other participant left the session.");
     }

@@ -95,6 +95,24 @@ Patients can open **Assistant** in the portal sidebar. The assistant can answer
 patient-scoped questions about profile details, request status, latest released
 results, secure report links, access requests, consent and notifications.
 
+## Online consultation video
+
+The live consultation room uses WebRTC in the browser. Flask/PythonAnywhere only
+handles invite-only room access and signaling; the actual camera/microphone media
+must connect browser-to-browser or through a TURN relay. For reliable calls on
+PythonAnywhere, configure a TURN service in `env.txt`:
+
+```bash
+WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
+WEBRTC_TURN_URLS=turn:your-turn-host:3478,turns:your-turn-host:5349
+WEBRTC_TURN_USERNAME=your-turn-username
+WEBRTC_TURN_CREDENTIAL=your-turn-password
+WEBRTC_FORCE_RELAY=false
+```
+
+Set `WEBRTC_FORCE_RELAY=true` temporarily when testing TURN, then switch it back
+to `false` after confirming the live room connects.
+
 ## Project layout
 
 ```
