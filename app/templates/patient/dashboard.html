@@ -163,7 +163,12 @@
 
 <script>
 (async function(){
-  const res = await fetch("{{ url_for('patient.dashboard_charts') }}");
+  const res = await fetch(window.nmbUrl("{{ url_for('patient.dashboard_charts') }}"), {
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { "Accept": "application/json" }
+  });
+  if (!res.ok) return;
   const data = await res.json();
   const C = window.Chart;
   if (!C) return;

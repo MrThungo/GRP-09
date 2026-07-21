@@ -2,12 +2,12 @@
 import json
 from datetime import datetime, timedelta
 
-from flask import current_app
 from sqlalchemy.orm import joinedload
 
 from .email import send_email
 from .extensions import db
 from .models import AuditLog, Notification, TestRequest, TestRequestItem, User
+from .url_utils import app_url
 
 NEAR_LIMIT_WINDOW_MINUTES = 30
 
@@ -84,11 +84,11 @@ def send_near_limit_reminders(now=None, window_minutes=NEAR_LIMIT_WINDOW_MINUTES
             link=link,
         ))
 
-        app_base = (current_app.config.get("APP_BASE_URL") or "").rstrip("/")
+        link_url = app_url(link, external=True)
         priority = (item.request.priority or "routine").upper()
         _send_email(
             [technician.email],
-            f"NMB-HLab turnaround reminder: {item.test.code}",
+            f"MediLab Connect turnaround reminder: {item.test.code}",
             (
                 f"Hello {technician.full_name or technician.email},\n\n"
                 f"{item.test.code} {item.test.name} is approaching its turnaround time limit.\n\n"
@@ -96,7 +96,7 @@ def send_near_limit_reminders(now=None, window_minutes=NEAR_LIMIT_WINDOW_MINUTES
                 f"Patient: {patient_name}\n"
                 f"Priority: {priority}\n"
                 f"Due by: {due_label}\n\n"
-                f"Please review the request and update the result status as soon as possible:\n{app_base}{link}\n\n"
+                f"Please review the request and update the result status as soon as possible:\n{link_url}\n\n"
                 ""
             ),
         )

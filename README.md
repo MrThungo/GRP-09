@@ -1,4 +1,4 @@
-# NMB-HLabSys — Nelson Mandela Bay Haematology Lab System
+# MediLab Connect — Nelson Mandela Bay Haematology Lab System
 
 Pure **Flask + Jinja + Tailwind CSS** (Tailwind via the official CDN — no React,
 no Vite, no Node build step). SQLite is available for local demo mode. For ONP400 deployment, use SQL Server via `DATABASE_URL` after running `database/sql_server_schema.sql`.
@@ -79,7 +79,7 @@ TWILIO_AUTH_TOKEN=your-auth-token
 TWILIO_API_KEY_SID=your-api-key-sid
 TWILIO_API_KEY_SECRET=your-api-key-secret
 TWILIO_CONVERSATIONS_SERVICE_SID=your-conversations-service-sid
-TWILIO_BOT_IDENTITY=nmb-hlab-bot
+TWILIO_BOT_IDENTITY=medilab-connect-bot
 TWILIO_WEBHOOK_PUBLIC_URL=https://your-domain.example.com/chatbot/twilio/conversations/webhook
 TWILIO_VALIDATE_REQUESTS=true
 ```
@@ -123,12 +123,31 @@ Keep `LOCAL_LLM_ENABLED=false` on hosted deployments unless that server can
 reach the private model endpoint. If the endpoint is unavailable, the assistant
 falls back to the built-in role-aware engine.
 
+## Email and hosted links
+
+Set the public URL and SMTP credentials in `env.txt` on the hosted server. The
+app accepts both `MAIL_*` and `SMTP_*` names, so deployment panels and simple env
+files can use either style:
+
+```bash
+APP_BASE_URL=https://soit-iis.mandela.ac.za/GRP-04-09
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-address@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_USE_SSL=false
+SMTP_USE_TLS=true
+```
+
+Port `587` with STARTTLS is the safest default on hosted/school networks. Port
+`465` uses SMTP-over-SSL, but it is commonly blocked by network firewalls.
+
 ## Online consultation video
 
-The live consultation room uses WebRTC in the browser. Flask/PythonAnywhere only
-handles invite-only room access and signaling; the actual camera/microphone media
-must connect browser-to-browser or through a TURN relay. For reliable calls on
-PythonAnywhere, configure a TURN service in `env.txt`:
+The live consultation room uses WebRTC in the browser. Flask/IIS handles
+invite-only room access and signaling; the actual camera/microphone media must
+connect browser-to-browser or through a TURN relay. For reliable calls across
+campus, home, and mobile networks, configure a TURN service in `env.txt`:
 
 ```bash
 WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
@@ -146,12 +165,14 @@ receive both a portal notification and an email before expiry, and expired video
 files are hard-deleted by the retention task.
 
 ```bash
+CONSULTATION_RECORDING_RETENTION_HOURS=24
 CONSULTATION_RECORDING_RETENTION_DAYS=30
 CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS=7
 CONSULTATION_RECORDING_CLEANUP_INTERVAL_SECONDS=3600
 ```
 
-For PythonAnywhere, add a scheduled task that runs:
+For a hosted server with scheduled task access, run this command periodically.
+On IIS-only uploads, the same cleanup also runs from app traffic:
 
 ```bash
 flask --app wsgi:app cleanup-recordings
@@ -208,7 +229,11 @@ While the database is still being tested, publish only the application files.
 Do not run `database/sql_server_schema.sql` against the testing database unless
 you explicitly decide to reset or rebuild that database.
 
-1. Confirm the IIS site has HttpPlatformHandler enabled.
+1. Confirm the IIS site runs ASP.NET for this application folder. The school
+   server deployment uses `App_Code/PythonBridgeHandler.cs` from `web.config` to
+   start the uploaded Python runtime on `127.0.0.1` and proxy dynamic requests
+   into the Flask app. Static files and media under `/static/` are served
+   directly by the bridge with byte-range support for video playback.
 2. Publish the source to the IIS share:
 
    ```powershell
@@ -221,17 +246,33 @@ you explicitly decide to reset or rebuild that database.
    .\tools\publish-iis.ps1 -Preview
    ```
 
-3. On the IIS server/share, create a virtual environment in the published folder:
+3. If you have PowerShell access on the IIS server/share, create a virtual
+   environment in the published folder:
 
    ```powershell
    py -m venv .venv
    .\.venv\Scripts\python.exe -m pip install -r requirements.txt
    ```
 
-4. Create the server `env.txt` from `env.production.example`, using the existing
-   testing `DATABASE_URL`. The publish script excludes local `env.txt` by
-   default so local testing secrets are not copied accidentally.
+4. If you only have upload access to the IIS share, publish with the local
+   runtime included:
 
-5. Restart the IIS app pool/site. `web.config` runs `wsgi.py` through the local
-   `.venv\Scripts\python.exe` and uses IIS' dynamic `HTTP_PLATFORM_PORT`.
+   ```powershell
+   .\tools\publish-iis.ps1 -UploadOnly
+   ```
+
+   Upload-only mode copies `env.txt`, `.venv` and a `.python` runtime folder to
+   the share. The IIS bridge in `web.config` runs `.\.python\python.exe`, and
+   `wsgi.py` loads packages from `.\.venv\Lib\site-packages`.
+
+5. Create the server `env.txt` from `env.production.example`, using the existing
+   testing `DATABASE_URL`. The publish script excludes local `env.txt` by
+   default so local testing secrets are not copied accidentally. Upload-only
+   mode includes `env.txt` because there is no server shell step.
+
+6. Restart the IIS app pool/site if you have access. If not, uploading
+   `web.config` usually triggers IIS to reload the application. The first
+   request can take a few seconds because ASP.NET compiles the bridge and starts
+   Flask on a loopback port. Keep `PYTHON_BRIDGE_PORT=0` so each reload gets a
+   fresh free port instead of reusing a stale Python process.
 

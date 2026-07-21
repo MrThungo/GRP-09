@@ -386,13 +386,13 @@ def reset_password(user_id):
     db.session.commit()
     sent = send_email(
         [u.email],
-        "Your NMB-HLab temporary password",
+        "Your MediLab Connect temporary password",
         (
             f"Hello {u.full_name or u.email},\n\n"
-            "Your NMB-HLab password has been reset by an administrator.\n\n"
+            "Your MediLab Connect password has been reset by an administrator.\n\n"
             f"Temporary password: {new_pw}\n\n"
             "For security, you will be asked to choose a new password the next time you sign in.\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         ),
     )
     flash(

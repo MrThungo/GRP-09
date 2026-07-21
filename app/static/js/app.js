@@ -1,4 +1,21 @@
-// Vanilla JS — replaces the old React islands.
+// Vanilla JS - replaces the old React islands.
+
+// --- Deployment-safe URLs ---
+(function () {
+  const meta = document.querySelector('meta[name="app-base-path"]');
+  const rawBase = window.NMB_APP_BASE_PATH || meta?.content || "";
+  const base = rawBase && rawBase !== "/" ? rawBase.replace(/\/+$/, "") : "";
+
+  window.nmbUrl = function (path) {
+    const value = String(path || "");
+    if (!value) return base || "/";
+    if (value === "#" || value.startsWith("#")) return value;
+    if (/^(https?:|mailto:|tel:)/i.test(value) || value.startsWith("//")) return value;
+    if (!value.startsWith("/")) return `${base}/${value}`;
+    if (base && value.startsWith(`${base}/`)) return value;
+    return `${base}${value}`;
+  };
+})();
 
 // --- Fast internal navigation: prefetch + instant document swap ---
 (function () {
@@ -500,7 +517,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
         </button>
       </div>
       <div data-bell-list class="divide-y divide-slate-800">
-        <div class="px-4 py-6 text-slate-500 text-center">Loading…</div>
+        <div class="px-4 py-6 text-slate-500 text-center">Loading...</div>
       </div>
     </div>`;
 
@@ -518,7 +535,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
 
   async function load() {
     try {
-      const res = await fetch("/api/notifications", { credentials: "same-origin" });
+      const res = await fetch(window.nmbUrl("/api/notifications"), { credentials: "same-origin" });
       const items = await res.json();
       if (!Array.isArray(items) || items.length === 0) {
         list.innerHTML = `<div class="px-4 py-6 text-slate-500 text-center">No notifications.</div>`;
@@ -531,7 +548,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
       dot.classList.toggle("hidden", knownUnreadCount === 0);
       clearButton?.classList.remove("hidden");
       list.innerHTML = items.map(n => `
-        <a href="${n.link || "#"}" data-id="${n.id}"
+        <a href="${window.nmbUrl(n.link || "#")}" data-id="${n.id}"
            class="block px-4 py-3 hover:bg-slate-800 ${n.read ? "opacity-60" : ""}">
           <div class="font-medium">${escape(n.title)}</div>
           ${n.body ? `<div class="text-xs text-slate-400 mt-0.5">${escape(n.body)}</div>` : ""}
@@ -539,7 +556,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
         </a>`).join("");
       list.querySelectorAll("a[data-id]").forEach(a => {
         a.addEventListener("click", () => {
-          fetch(`/api/notifications/${a.dataset.id}/read`,
+          fetch(window.nmbUrl(`/api/notifications/${a.dataset.id}/read`),
             { method: "POST", credentials: "same-origin" });
         });
       });
@@ -551,7 +568,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   async function clearNotifications() {
     clearButton.disabled = true;
     try {
-      const res = await fetch("/api/notifications/clear", {
+      const res = await fetch(window.nmbUrl("/api/notifications/clear"), {
         method: "POST",
         credentials: "same-origin",
         headers: { "Accept": "application/json" },
@@ -609,9 +626,9 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   const messages = root.querySelector("[data-floating-chatbot-messages]");
   const form = root.querySelector("[data-floating-chatbot-form]");
   const input = root.querySelector("[data-floating-chatbot-input]");
-  const localEndpoint = root.dataset.localEndpoint;
-  const twilioSessionEndpoint = root.dataset.twilioSessionEndpoint;
-  const assistantName = root.dataset.assistantName || "NMB Lab";
+  const localEndpoint = window.nmbUrl(root.dataset.localEndpoint || "");
+  const twilioSessionEndpoint = window.nmbUrl(root.dataset.twilioSessionEndpoint || "");
+  const assistantName = root.dataset.assistantName || "MediLab Assistant";
   let twilioConversation = null;
   let twilioIdentity = "";
   let booted = false;
@@ -672,7 +689,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
       links.forEach(link => {
         if (!link || !link.url || !link.label) return;
         const anchor = document.createElement("a");
-        anchor.href = link.url;
+        anchor.href = window.nmbUrl(link.url);
         anchor.textContent = link.label;
         anchor.dataset.noFastNav = "";
         actions.appendChild(anchor);
@@ -920,7 +937,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
 
   async function loadContacts() {
     try {
-      const response = await fetch("/messages/api/contacts", {
+      const response = await fetch(window.nmbUrl("/messages/api/contacts"), {
         credentials: "same-origin",
         cache: "no-store",
       });
@@ -938,7 +955,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     if (!selectedId || loadingThread) return;
     loadingThread = true;
     try {
-      const response = await fetch(`/messages/api/thread/${encodeURIComponent(selectedId)}`, {
+      const response = await fetch(window.nmbUrl(`/messages/api/thread/${encodeURIComponent(selectedId)}`), {
         credentials: "same-origin",
         cache: "no-store",
       });
@@ -994,7 +1011,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
 
     if (sendButton) sendButton.disabled = true;
     try {
-      const response = await fetch(`/messages/api/thread/${encodeURIComponent(selectedId)}`, {
+      const response = await fetch(window.nmbUrl(`/messages/api/thread/${encodeURIComponent(selectedId)}`), {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
@@ -1050,15 +1067,15 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   async function check() {
     if (triggered) return;
     try {
-      const r = await fetch("/api/me", { credentials: "same-origin", cache: "no-store" });
+      const r = await fetch(window.nmbUrl("/api/me"), { credentials: "same-origin", cache: "no-store" });
       if (r.status === 401) return; // not logged in
       const data = await r.json();
       if (data && data.blocked) {
         triggered = true;
         modal.classList.remove("hidden");
         setTimeout(async () => {
-          await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
-          window.location.href = "/auth/login";
+          await fetch(window.nmbUrl("/auth/logout"), { method: "POST", credentials: "same-origin" });
+          window.location.href = window.nmbUrl("/auth/login");
         }, 1800);
       }
     } catch (e) { /* network blip */ }
@@ -1661,7 +1678,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
 // --- Live page updates without full refresh ---
 (function () {
   const region = document.querySelector("[data-live-page-region]");
-  const snapshotUrl = region?.dataset.liveSnapshotUrl;
+  const snapshotUrl = window.nmbUrl(region?.dataset.liveSnapshotUrl || "");
   if (!region || !snapshotUrl || !("fetch" in window) || !("DOMParser" in window)) return;
 
   const POLL_MS = 6000;
@@ -1714,7 +1731,10 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
       "availability_created", "availability_updated", "availability_statuses",
     ];
     const accessKeys = ["access_created", "access_responded", "access_statuses"];
-    const inventoryKeys = ["catalog_latest", "consumables_latest", "orders_latest", "stock_latest", "order_statuses"];
+    const inventoryKeys = [
+      "catalog_latest", "consumables_latest", "orders_latest", "orders_received",
+      "orders_completed", "orders_cancelled", "stock_latest", "order_statuses",
+    ];
     const adminKeys = ["users_latest", "patients_latest"];
 
     if (path.includes("/notifications")) return notificationKeys;
@@ -1722,7 +1742,16 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     if (path.includes("/consultation")) return consultationKeys;
     if (path.includes("/chatbot")) return [];
 
-    if (path.includes("/reports") || path.includes("/dashboard") || path.endsWith("/admin/") || path.endsWith("/manager/") || path.endsWith("/doctor/") || path.endsWith("/technician/") || path.endsWith("/patient/")) {
+    if (path.includes("/dashboard") || path.endsWith("/admin/") || path.endsWith("/manager/") || path.endsWith("/doctor/") || path.endsWith("/technician/") || path.endsWith("/patient/")) {
+      const dashboardRequestKeys = ["requests_created", "requests_released", "request_statuses", "item_statuses", "items_verified"];
+      if (role === "admin") return [...dashboardRequestKeys, ...consultationKeys, ...inventoryKeys, ...adminKeys];
+      if (role === "lab_manager") return [...dashboardRequestKeys, ...inventoryKeys, ...consultationKeys];
+      if (role === "doctor") return [...dashboardRequestKeys, ...consultationKeys, ...accessKeys];
+      if (role === "lab_technician") return dashboardRequestKeys;
+      if (role === "patient") return ["requests_created", "requests_released", "request_statuses", "items_captured", ...consultationKeys, ...accessKeys];
+    }
+
+    if (path.includes("/reports")) {
       if (role === "admin") return [...requestKeys, ...consultationKeys, ...accessKeys, ...inventoryKeys, ...adminKeys];
       if (role === "lab_manager") return [...requestKeys, ...inventoryKeys, ...consultationKeys];
       if (role === "doctor") return [...requestKeys, ...consultationKeys, ...accessKeys];
@@ -1895,9 +1924,9 @@ document.querySelectorAll("[data-flag-preview]").forEach(out => {
   const update = () => {
     const v = parseFloat(input.value);
     if (!isFinite(v)) { out.textContent = ""; return; }
-    if (isFinite(lo) && v < lo) { out.textContent = "↓ low (will flag)"; out.className = "mt-2 text-xs text-amber-400"; }
-    else if (isFinite(hi) && v > hi) { out.textContent = "↑ high (will flag)"; out.className = "mt-2 text-xs text-amber-400"; }
-    else { out.textContent = "✓ within reference range"; out.className = "mt-2 text-xs text-emerald-400"; }
+    if (isFinite(lo) && v < lo) { out.textContent = "Low (will flag)"; out.className = "mt-2 text-xs text-amber-400"; }
+    else if (isFinite(hi) && v > hi) { out.textContent = "High (will flag)"; out.className = "mt-2 text-xs text-amber-400"; }
+    else { out.textContent = "ok within reference range"; out.className = "mt-2 text-xs text-emerald-400"; }
   };
   input.addEventListener("input", update);
   update();

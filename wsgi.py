@@ -1,8 +1,41 @@
 import os
+import sys
+import traceback
 
-from app import create_app
+PROJECT_HOME = os.path.dirname(os.path.abspath(__file__))
+LOCAL_SITE_PACKAGES = os.path.join(PROJECT_HOME, ".venv", "Lib", "site-packages")
+STARTUP_LOG = os.path.join(PROJECT_HOME, "App_Data", "logs", "startup-error.log")
 
-application = create_app()
+if os.path.isdir(LOCAL_SITE_PACKAGES) and LOCAL_SITE_PACKAGES not in sys.path:
+    sys.path.insert(0, LOCAL_SITE_PACKAGES)
+
+def write_startup_log(message):
+    try:
+        os.makedirs(os.path.dirname(STARTUP_LOG), exist_ok=True)
+        with open(STARTUP_LOG, "a", encoding="utf-8") as handle:
+            handle.write(message)
+    except Exception:
+        pass
+
+
+try:
+    write_startup_log("\n--- Python process started ---\n")
+
+    from app import create_app
+
+    application = create_app()
+
+    @application.get("/__bridge/health")
+    def _bridge_health():
+        return (
+            "ok\n" + os.environ.get("PYTHON_BRIDGE_DEPLOYMENT_ID", "") + "\n",
+            200,
+            {"Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store"},
+        )
+except Exception:
+    write_startup_log("\n--- Flask startup failed ---\n" + traceback.format_exc())
+    raise
+
 app = application
 
 if __name__ == "__main__":

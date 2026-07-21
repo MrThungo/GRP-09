@@ -1,7 +1,7 @@
 """Shared PDF report builder for all roles.
 
 Uses ReportLab Platypus so reports look polished and paginate cleanly.
-The single `build_report_pdf()` helper renders a branded NMB-HLab document
+The single `build_report_pdf()` helper renders a branded MediLab Connect document
 with title, optional subtitle, summary lines, and one or more data tables.
 """
 from __future__ import annotations
@@ -137,7 +137,7 @@ def _header_footer(canvas, doc):
     canvas.rect(0, A4[1] - 14 * mm, A4[0], 14 * mm, fill=1, stroke=0)
     canvas.setFillColor(colors.white)
     canvas.setFont("Helvetica-Bold", 11)
-    canvas.drawString(15 * mm, A4[1] - 9 * mm, "NMB-HLab")
+    canvas.drawString(15 * mm, A4[1] - 9 * mm, "MediLab Connect")
     canvas.setFont("Helvetica", 8)
     canvas.drawRightString(A4[0] - 15 * mm, A4[1] - 9 * mm,
                            "Nelson Mandela Bay Haematology Diagnostic Laboratories")

@@ -277,7 +277,7 @@
       searchRequest = new AbortController();
 
       try {
-        const url = `${patientSearchUrl}?q=${encodeURIComponent(q)}`;
+        const url = window.nmbUrl(`${patientSearchUrl}?q=${encodeURIComponent(q)}`);
         const response = await fetch(url, {
           credentials: "same-origin",
           signal: searchRequest.signal,

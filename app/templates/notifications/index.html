@@ -62,7 +62,7 @@
               <p class="mt-1 text-sm text-slate-400">{{ n.body }}</p>
             {% endif %}
             {% if n.link %}
-              <a class="mt-2 inline-flex text-sm font-semibold text-sky-300 hover:text-sky-200" href="{{ n.link }}">
+              <a class="mt-2 inline-flex text-sm font-semibold text-sky-300 hover:text-sky-200" href="{{ app_url(n.link) }}">
                 Open
               </a>
             {% endif %}

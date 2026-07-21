@@ -3,8 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}NMB-HLab{% endblock %} - NMB Lab Hub</title>
-  <meta name="description" content="Nelson Mandela Bay Haematology Laboratory test request management.">
+  {% set app_name = config.APP_NAME or 'MediLab Connect' %}
+  {% set browser_title %}{% block title %}{% endblock %}{% endset %}
+  {% set browser_title = browser_title|striptags|trim %}
+  {% if not browser_title %}
+    {% set browser_title = self.page_title()|striptags|trim %}
+  {% endif %}
+  <title>{% if browser_title %}{{ browser_title }} | {% endif %}{{ app_name }}</title>
+  <meta name="description" content="{{ app_name }} secure laboratory test request, consultation and results portal.">
+  <meta name="app-base-path" content="{{ request.script_root or '' }}">
   <style>
     html, body { background: #020617; color: #f1f5f9; }
   </style>
@@ -37,6 +44,7 @@
   {% endif %}
   {% block head_extra %}{% endblock %}
   <script>
+    window.NMB_APP_BASE_PATH = {{ (request.script_root or '')|tojson }};
     window.applyNmbChartDefaults = function () {
       if (!window.Chart) return;
       Chart.defaults.responsive = true;
@@ -72,9 +80,9 @@
   <aside data-app-sidebar class="app-sidebar flex flex-col">
     <div class="px-5 py-5 border-b border-slate-800/80">
       <a href="{{ url_for('public.landing') }}" class="flex items-center gap-3">
-        <span class="brand-mark grid h-10 w-10 place-items-center rounded-lg text-base font-black text-white">N</span>
-        <span class="min-w-0">
-          <span class="block text-lg font-extrabold tracking-tight text-white">NMB-HLab</span>
+          <span class="brand-mark grid h-10 w-10 place-items-center rounded-lg text-base font-black text-white">M</span>
+          <span class="min-w-0">
+          <span class="block text-lg font-extrabold tracking-tight text-white">{{ app_name }}</span>
           <span class="block truncate text-xs font-medium text-slate-400">{{ role_label }}</span>
         </span>
       </a>
@@ -82,8 +90,6 @@
 
     <nav class="flex-1 space-y-5 px-3 py-4 text-sm">
       <div>
-        <div class="px-3 pb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Workspace</div>
-
         <div class="space-y-1">
           {% if role == 'doctor' %}
             {{ nav_link(url_for('doctor.dashboard'), 'Dashboard', ['doctor.dashboard']) }}
@@ -208,7 +214,7 @@
 {% if current_user.is_authenticated and not current_user.is_pending %}
 {% set assistant_role = current_user.primary_role %}
 {% set assistant_role_label = (assistant_role or 'portal').replace('_', ' ')|title %}
-{% set assistant_name = 'NMB Lab Assistant' %}
+{% set assistant_name = app_name ~ ' Assistant' %}
 {% if assistant_role == 'patient' %}
   {% set assistant_prompts = ['consultations', 'availability', 'latest results', 'request status', 'abnormal results', 'access requests', 'update profile', 'send email'] %}
   {% set assistant_intro = 'Tell me what you want to do. Try "latest results", "consultations", "availability", or "update profile phone to 0712345678".' %}
@@ -227,7 +233,7 @@
 {% endif %}
 <section class="chatbot-widget"
          data-floating-chatbot
-         data-assistant-name="NMB Lab"
+         data-assistant-name="{{ assistant_name }}"
          data-local-endpoint="{{ url_for('chatbot.api_message') }}"
          data-twilio-session-endpoint="{{ url_for('chatbot.twilio_session') }}"
          aria-label="{{ assistant_name }}">
@@ -236,7 +242,7 @@
           data-floating-chatbot-toggle
           aria-label="Open {{ assistant_name }}"
           aria-expanded="false">
-    <span class="chatbot-launcher-icon">NMB</span>
+    <span class="chatbot-launcher-icon">AI</span>
     <span class="chatbot-launcher-dot" aria-hidden="true"></span>
   </button>
 
@@ -264,7 +270,7 @@
 
     <div class="chatbot-messages" data-floating-chatbot-messages>
       <div class="chatbot-message assistant">
-        <div class="chatbot-message-label">NMB Lab</div>
+        <div class="chatbot-message-label">{{ assistant_name }}</div>
         <div class="chatbot-message-body">{{ assistant_intro }}</div>
       </div>
     </div>
@@ -302,7 +308,7 @@
     <div class="mx-auto grid h-10 w-10 place-items-center rounded-full bg-amber-900/40 text-sm font-black text-amber-300 sm:h-12 sm:w-12 sm:text-lg">Key</div>
     <h2 class="mt-3 text-center text-base font-semibold text-amber-200 sm:text-lg">Change your password to continue</h2>
     <p class="mt-2 text-xs text-slate-300 text-center">
-      For security, you must set a new password before using NMB-HLab. This
+      For security, you must set a new password before using {{ app_name }}. This
       window cannot be closed until you have updated your password.
     </p>
     {% if flashed_messages is defined %}

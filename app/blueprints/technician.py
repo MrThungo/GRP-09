@@ -261,7 +261,7 @@ def _notify_doctor_of_sample_issue(req, reason, affected_items=None, cancelled_r
             f"Affected: {affected_text}\n"
             f"Reason: {reason}\n\n"
             "Please review the request and arrange recollection if required.\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         )
     else:
         notice_body = (
@@ -274,7 +274,7 @@ def _notify_doctor_of_sample_issue(req, reason, affected_items=None, cancelled_r
             f"Affected: {affected_text}\n"
             f"Reason: {reason}\n\n"
             "Only the affected test or sample was rejected. Any other active tests on this request remain in progress.\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         )
     notify(
         req.doctor_id,
@@ -285,7 +285,7 @@ def _notify_doctor_of_sample_issue(req, reason, affected_items=None, cancelled_r
     if req.doctor and req.doctor.email:
         send_email(
             [req.doctor.email],
-            f"NMB-HLab laboratory rejection: {req.request_number}",
+            f"MediLab Connect laboratory rejection: {req.request_number}",
             email_body,
         )
 
@@ -709,13 +709,13 @@ def cancel_request(request_id):
         if req.doctor and req.doctor.email:
             send_email(
                 [req.doctor.email],
-                f"NMB-HLab request cancelled: {req.request_number}",
+                f"MediLab Connect request cancelled: {req.request_number}",
                 (
                     f"Hello Dr. {req.doctor.full_name or req.doctor.email},\n\n"
                     f"Laboratory request {req.request_number} has been cancelled by the laboratory.\n\n"
                     f"Reason: {reason}\n\n"
                     "Please review the request in the portal for any follow-up action.\n\n"
-                    "- NMB-HLab"
+                    "- MediLab Connect"
                 ),
             )
     log_audit(current_user.id, "technician_cancel_request", "test_request", req.id,

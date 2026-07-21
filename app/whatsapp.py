@@ -8,6 +8,7 @@ from flask import current_app, has_app_context
 
 from .email import BRAND_NAME
 from .models import ROLE_LABELS
+from .url_utils import app_url
 
 
 ROLE_USAGE_LINES = {
@@ -39,12 +40,7 @@ def _log_warning(message, *args):
 
 
 def _app_url(path="/"):
-    if not has_app_context():
-        return path
-    base = (current_app.config.get("APP_BASE_URL") or "").rstrip("/")
-    if not base:
-        return path
-    return f"{base}/{path.lstrip('/')}"
+    return app_url(path, external=True) if has_app_context() else path
 
 
 def _phone_chat_id(phone_number):

@@ -1433,15 +1433,15 @@ def quick_order():
     db.session.commit()
     sent = send_email(
         [supplier.email],
-        f"NMB-HLab consumable order {order.order_number}",
+        f"MediLab Connect consumable order {order.order_number}",
         (
             f"Hello {supplier.contact_name or supplier.name},\n\n"
-            f"Please process the following consumable order for NMB-HLab.\n\n"
+            f"Please process the following consumable order for MediLab Connect.\n\n"
             f"Order number: {order.order_number}\n"
             f"Item: {consumable.name}\n"
             f"Quantity: {quantity}\n\n"
             "Please contact the laboratory if you need any clarification before dispatch.\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         ),
     )
     flash(
@@ -1527,13 +1527,13 @@ def add_doctor():
             return redirect(url_for("manager.add_doctor"))
         sent = send_email(
             [doctor.email],
-            "Your NMB-HLab doctor account",
+            "Your MediLab Connect doctor account",
             (
                 f"Hello Dr. {doctor.full_name or doctor.email},\n\n"
-                "Your NMB-HLab doctor account has been created.\n\n"
+                "Your MediLab Connect doctor account has been created.\n\n"
                 f"Temporary password: {temporary_password}\n\n"
                 "For security, you will be asked to choose a new password the first time you sign in.\n\n"
-                "- NMB-HLab"
+                "- MediLab Connect"
             ),
         )
         whatsapp_sent = send_account_welcome_whatsapp(
@@ -1732,13 +1732,13 @@ def add_technician():
             return redirect(url_for("manager.add_technician"))
         sent = send_email(
             [technician.email],
-            "Your NMB-HLab technician account",
+            "Your MediLab Connect technician account",
             (
                 f"Hello {technician.full_name or technician.email},\n\n"
-                "Your NMB-HLab laboratory technician account has been created.\n\n"
+                "Your MediLab Connect laboratory technician account has been created.\n\n"
                 f"Temporary password: {temporary_password}\n\n"
                 "For security, you will be asked to choose a new password the first time you sign in.\n\n"
-                "- NMB-HLab"
+                "- MediLab Connect"
             ),
         )
         whatsapp_sent = send_account_welcome_whatsapp(
@@ -1979,14 +1979,14 @@ def orders():
         lines = "\n".join(f"- {c.name}: {q}" for c, q in selected)
         sent = send_email(
             [supplier.email],
-            f"NMB-HLab consumable order {order.order_number}",
+            f"MediLab Connect consumable order {order.order_number}",
             (
                 f"Hello {supplier.contact_name or supplier.name},\n\n"
-                "Please process the following consumable order for NMB-HLab.\n\n"
+                "Please process the following consumable order for MediLab Connect.\n\n"
                 f"Order number: {order.order_number}\n"
                 f"Items:\n{lines}\n\n"
                 "Please contact the laboratory if you need any clarification before dispatch.\n\n"
-                "- NMB-HLab"
+                "- MediLab Connect"
             ),
         )
         if sent:
@@ -2056,14 +2056,14 @@ def cancel_order_item(item_id):
     supplier = item.order.supplier
     sent = send_email(
         [supplier.email if supplier else None],
-        f"NMB-HLab order item cancelled: {item.order.order_number}",
+        f"MediLab Connect order item cancelled: {item.order.order_number}",
         (
             f"Hello {supplier.contact_name or supplier.name if supplier else 'Supplier'},\n\n"
             f"One item on order {item.order.order_number} has been cancelled.\n\n"
             f"Item: {item.consumable.name}\n"
             f"Reason: {reason}\n\n"
             "No further action is required for this item unless the laboratory contacts you directly.\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         ),
     )
     log_audit(current_user.id, "cancel_order_item", "consumable_order_item", item.id,
@@ -2093,13 +2093,13 @@ def cancel_order(order_id):
     db.session.commit()
     sent = send_email(
         [order.supplier.email if order.supplier else None],
-        f"NMB-HLab order cancelled: {order.order_number}",
+        f"MediLab Connect order cancelled: {order.order_number}",
         (
             f"Hello {order.supplier.contact_name or order.supplier.name if order.supplier else 'Supplier'},\n\n"
             f"Order {order.order_number} has been cancelled.\n\n"
             f"Reason: {reason}\n\n"
             "No further action is required for this order unless the laboratory contacts you directly.\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         ),
     )
     if sent:
@@ -2146,15 +2146,15 @@ def create_order():
     db.session.commit()
     send_email(
         [supplier.email],
-        f"NMB-HLab consumable order {order.order_number}",
+        f"MediLab Connect consumable order {order.order_number}",
         (
             f"Hello {supplier.contact_name or supplier.name},\n\n"
-            f"Please process the following consumable order for NMB-HLab.\n\n"
+            f"Please process the following consumable order for MediLab Connect.\n\n"
             f"Order number: {order.order_number}\n"
             f"Item: {consumable.name}\n"
             f"Quantity: {quantity}\n\n"
             "Please contact the laboratory if you need any clarification before dispatch.\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         ),
     )
     flash("Order created.", "success")

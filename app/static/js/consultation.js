@@ -1,6 +1,11 @@
 (function () {
+  const appUrl = (path) => {
+    const value = String(path || "");
+    return value && window.nmbUrl ? window.nmbUrl(value) : value;
+  };
+
   const postJson = async (url, body) => {
-    const response = await fetch(url, {
+    const response = await fetch(appUrl(url), {
       method: "POST",
       credentials: "same-origin",
       cache: "no-store",
@@ -13,9 +18,9 @@
 
   const waiting = document.querySelector("[data-consultation-waiting]");
   if (waiting) {
-    const statusUrl = waiting.dataset.statusUrl;
-    const signalsUrl = waiting.dataset.signalsUrl;
-    const joinUrl = waiting.dataset.joinUrl;
+    const statusUrl = appUrl(waiting.dataset.statusUrl || "");
+    const signalsUrl = appUrl(waiting.dataset.signalsUrl || "");
+    const joinUrl = appUrl(waiting.dataset.joinUrl || "");
     const statusText = waiting.querySelector("[data-consultation-waiting-status]");
 
     const pingWaitingRoom = async () => {
@@ -40,7 +45,7 @@
         if (!response.ok) return;
         const data = await response.json();
         if (data.started) {
-          window.location.assign(data.room_url || joinUrl);
+          window.location.assign(appUrl(data.room_url || joinUrl));
           return;
         }
         if (statusText) statusText.textContent = "Checked in and waiting";
@@ -59,11 +64,11 @@
   if (!room) return;
 
   const role = room.dataset.role;
-  const statusUrl = room.dataset.statusUrl;
-  const signalsUrl = room.dataset.signalsUrl;
-  const iceServersUrl = room.dataset.iceServersUrl;
-  const startUrl = room.dataset.startUrl;
-  const recordingUrl = room.dataset.recordingUrl;
+  const statusUrl = appUrl(room.dataset.statusUrl || "");
+  const signalsUrl = appUrl(room.dataset.signalsUrl || "");
+  const iceServersUrl = appUrl(room.dataset.iceServersUrl || "");
+  const startUrl = appUrl(room.dataset.startUrl || "");
+  const exitUrl = appUrl(room.dataset.exitUrl || "");
   const startedOnLoad = room.dataset.started === "1";
   const localVideo = room.querySelector("[data-consultation-local]");
   const remoteVideo = room.querySelector("[data-consultation-remote]");
@@ -76,6 +81,8 @@
   const waitingCount = room.querySelector("[data-consultation-waiting-count]");
   const waitingList = room.querySelector("[data-consultation-waiting-list]");
   const waitingEmpty = room.querySelector("[data-consultation-waiting-empty]");
+  const endOverlay = room.querySelector("[data-consultation-ended-overlay]");
+  const endMessage = room.querySelector("[data-consultation-ended-message]");
 
   let peer = null;
   let localStream = null;
@@ -86,32 +93,24 @@
   let iceServerConfigPromise = null;
   let turnRelayConfigured = false;
   let restartingIce = false;
+  let roomEnded = false;
+  let endSoundContext = null;
   const pendingIceCandidates = [];
   const seenSignals = new Set();
-  const fallbackIceServers = [{ urls: ["stun:stun.l.google.com:19302"] }];
-
-  let mediaRecorder = null;
-  let recordingId = "";
-  let recordingMimeType = "";
-  let recordingExtension = ".webm";
-  let recordingCanvas = null;
-  let recordingContext = null;
-  let recordingCanvasStream = null;
-  let recordingDrawTimer = null;
-  let recordingAudioContext = null;
-  let recordingAudioDestination = null;
-  let recordingUploadQueue = Promise.resolve();
-  let recordingUploadFailed = false;
-  let recordingChunkSequence = 0;
-  let recordingStarted = false;
-  let recordingConnectedStreams = new WeakSet();
-  const recordingAudioSources = [];
+  const fallbackIceServers = [{
+    urls: [
+      "stun:stun.l.google.com:19302",
+      "stun:stun1.l.google.com:19302",
+      "stun:stun2.l.google.com:19302",
+    ],
+  }];
 
   const setStatus = (message) => {
     if (statusText) statusText.textContent = message;
   };
 
   const sendSignal = async (type, payload) => {
+    if (!signalsUrl) return;
     await postJson(signalsUrl, { type, payload: payload || {} });
   };
 
@@ -143,6 +142,99 @@
     if (!video) return;
     const playPromise = video.play && video.play();
     if (playPromise && playPromise.catch) playPromise.catch(() => {});
+  };
+
+  const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+  const playEndSound = () => {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    try {
+      endSoundContext = endSoundContext || new AudioContextClass();
+      const context = endSoundContext;
+      const playTone = () => {
+        const start = context.currentTime + 0.02;
+        const master = context.createGain();
+        master.gain.setValueAtTime(0.0001, start);
+        master.gain.exponentialRampToValueAtTime(0.07, start + 0.04);
+        master.gain.exponentialRampToValueAtTime(0.0001, start + 0.9);
+        master.connect(context.destination);
+
+        [660, 523.25, 392].forEach((frequency, index) => {
+          const toneStart = start + (index * 0.18);
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          oscillator.type = "sine";
+          oscillator.frequency.setValueAtTime(frequency, toneStart);
+          gain.gain.setValueAtTime(0.0001, toneStart);
+          gain.gain.exponentialRampToValueAtTime(0.55, toneStart + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.0001, toneStart + 0.26);
+          oscillator.connect(gain);
+          gain.connect(master);
+          oscillator.start(toneStart);
+          oscillator.stop(toneStart + 0.28);
+        });
+      };
+
+      if (context.state === "suspended") {
+        context.resume().then(playTone).catch(() => {});
+      } else {
+        playTone();
+      }
+    } catch (error) {
+      /* Audio cues are best effort because browsers can block autoplayed sounds. */
+    }
+  };
+
+  const cleanupRoomMedia = () => {
+    if (signalTimer) window.clearInterval(signalTimer);
+    if (statusTimer) window.clearInterval(statusTimer);
+    signalTimer = null;
+    statusTimer = null;
+    if (peer) {
+      peer.onicecandidate = null;
+      peer.ontrack = null;
+      peer.onconnectionstatechange = null;
+      peer.oniceconnectionstatechange = null;
+      peer.close();
+      peer = null;
+    }
+    if (localStream) {
+      localStream.getTracks().forEach((track) => track.stop());
+      localStream = null;
+    }
+    if (remoteMediaStream) {
+      remoteMediaStream.getTracks().forEach((track) => track.stop());
+      remoteMediaStream = null;
+    }
+    [localVideo, remoteVideo].forEach((video) => {
+      if (!video) return;
+      video.pause();
+      video.srcObject = null;
+    });
+    if (remoteEmpty) remoteEmpty.classList.remove("hidden");
+    if (micButton) micButton.disabled = true;
+    if (cameraButton) cameraButton.disabled = true;
+  };
+
+  const showEndTransition = (message, redirectUrl) => {
+    if (roomEnded) return;
+    roomEnded = true;
+    const finalMessage = message || "The live consultation has ended.";
+    setStatus(finalMessage);
+    if (endMessage) endMessage.textContent = finalMessage;
+    room.classList.add("consult-room-ending");
+    if (endOverlay) endOverlay.setAttribute("aria-hidden", "false");
+    playEndSound();
+    window.setTimeout(() => {
+      room.classList.add("consult-room-ended");
+    }, 80);
+    window.setTimeout(cleanupRoomMedia, 420);
+    if (redirectUrl) {
+      window.setTimeout(() => {
+        window.location.assign(appUrl(redirectUrl));
+      }, 1800);
+    }
   };
 
   const normalizeIceServers = (servers) => {
@@ -189,10 +281,6 @@
     return iceServerConfigPromise;
   };
 
-  const hasLiveVideo = (stream) => (
-    !!stream && stream.getVideoTracks().some((track) => track.readyState === "live" && track.enabled)
-  );
-
   const ensureMedia = async () => {
     if (localStream) return localStream;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -213,7 +301,6 @@
       if (micButton) micButton.disabled = false;
       if (cameraButton) cameraButton.disabled = false;
       syncMediaButtons();
-      addAudioStreamToRecording(localStream);
       return localStream;
     } catch (error) {
       setStatus("Camera or microphone permission was blocked. You can still stay in the room.");
@@ -228,7 +315,7 @@
       return "Connection dropped. Rebuilding the video link...";
     }
     if (role === "doctor") {
-      return "Connection failed. Add TURN relay settings on PythonAnywhere, then retry.";
+      return "Connection failed. Add TURN relay settings on the hosted server, then retry.";
     }
     return "Connection could not reach the doctor. Please stay here while it retries.";
   };
@@ -267,6 +354,7 @@
   };
 
   const updatePeerConnectionStatus = (state) => {
+    if (roomEnded) return;
     if (state === "checking" || state === "connecting") {
       setStatus("Connecting securely...");
     } else if (state === "connected" || state === "completed") {
@@ -284,7 +372,12 @@
   const ensurePeer = async () => {
     if (peer) return peer;
     await ensureMedia();
-    peer = new RTCPeerConnection(await loadIceServerConfig());
+    const peerConfig = await loadIceServerConfig();
+    peer = new RTCPeerConnection({
+      bundlePolicy: "max-bundle",
+      iceCandidatePoolSize: 4,
+      ...peerConfig,
+    });
 
     if (localStream) {
       localStream.getTracks().forEach((track) => peer.addTrack(track, localStream));
@@ -309,7 +402,6 @@
         playVideo(remoteVideo);
       }
       if (remoteEmpty) remoteEmpty.classList.add("hidden");
-      addAudioStreamToRecording(stream);
     };
 
     peer.onconnectionstatechange = () => {
@@ -338,10 +430,20 @@
   };
 
   const handleSignal = async (signal) => {
-    if (!signal || seenSignals.has(signal.id)) return;
+    if (!signal || seenSignals.has(signal.id) || roomEnded) return;
     seenSignals.add(signal.id);
-    const pc = await ensurePeer();
     const payload = signal.payload || {};
+
+    if (signal.type === "leave") {
+      if (payload.reason === "ended_by_doctor") {
+        showEndTransition("The live consultation has ended.", exitUrl);
+      } else {
+        setStatus("The other participant left the session.");
+      }
+      return;
+    }
+
+    const pc = await ensurePeer();
 
     if (signal.type === "offer") {
       if (pc.signalingState !== "stable") return;
@@ -370,12 +472,11 @@
       }
     } else if (signal.type === "ready" && role === "doctor") {
       await createOffer({ restart: payload.reason === "ice_failed" });
-    } else if (signal.type === "leave") {
-      setStatus("The other participant left the session.");
     }
   };
 
   const pollSignals = async () => {
+    if (roomEnded || !signalsUrl) return;
     try {
       const response = await fetch(signalsUrl, {
         credentials: "same-origin",
@@ -408,7 +509,7 @@
   };
 
   const fetchRoomStatus = async () => {
-    if (!statusUrl) return;
+    if (!statusUrl || roomEnded) return;
     const response = await fetch(statusUrl, {
       credentials: "same-origin",
       cache: "no-store",
@@ -416,6 +517,13 @@
     });
     if (!response.ok) return;
     const data = await response.json();
+    if (data.status === "completed" || data.status === "cancelled") {
+      const message = data.status === "cancelled"
+        ? "The live consultation was cancelled."
+        : "The live consultation has ended.";
+      showEndTransition(message, exitUrl);
+      return;
+    }
     if (role === "doctor") {
       renderWaitingParticipants(data.waiting_participants || []);
       if (data.started && startButton) startButton.classList.add("hidden");
@@ -433,261 +541,8 @@
     }, 3000);
   };
 
-  const drawPlaceholder = (ctx, x, y, width, height, label) => {
-    ctx.fillStyle = "#020617";
-    ctx.fillRect(x, y, width, height);
-    ctx.fillStyle = "#0f172a";
-    ctx.fillRect(x + 1, y + 1, Math.max(0, width - 2), Math.max(0, height - 2));
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = `${Math.max(14, Math.round(width / 32))}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, x + width / 2, y + height / 2);
-  };
-
-  const drawVideoCover = (ctx, video, x, y, width, height) => {
-    if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return false;
-    const sourceRatio = video.videoWidth / video.videoHeight;
-    const targetRatio = width / height;
-    let sx = 0;
-    let sy = 0;
-    let sw = video.videoWidth;
-    let sh = video.videoHeight;
-    if (sourceRatio > targetRatio) {
-      sw = video.videoHeight * targetRatio;
-      sx = (video.videoWidth - sw) / 2;
-    } else {
-      sh = video.videoWidth / targetRatio;
-      sy = (video.videoHeight - sh) / 2;
-    }
-    ctx.drawImage(video, sx, sy, sw, sh, x, y, width, height);
-    return true;
-  };
-
-  const drawRecordingFrame = () => {
-    if (!recordingContext || !recordingCanvas) return;
-    const ctx = recordingContext;
-    const width = recordingCanvas.width;
-    const height = recordingCanvas.height;
-    const remoteDrawn = drawVideoCover(ctx, remoteVideo, 0, 0, width, height);
-    if (!remoteDrawn) {
-      drawPlaceholder(ctx, 0, 0, width, height, remoteMediaStream ? "Camera off" : "Waiting for patient");
-    }
-
-    const inset = Math.round(width * 0.025);
-    const pipWidth = Math.round(width * 0.28);
-    const pipHeight = Math.round(pipWidth * 9 / 16);
-    const pipX = width - pipWidth - inset;
-    const pipY = height - pipHeight - inset;
-    ctx.fillStyle = "rgba(2, 6, 23, 0.82)";
-    ctx.fillRect(pipX - 4, pipY - 4, pipWidth + 8, pipHeight + 8);
-    if (hasLiveVideo(localStream)) {
-      drawVideoCover(ctx, localVideo, pipX, pipY, pipWidth, pipHeight);
-    } else {
-      drawPlaceholder(ctx, pipX, pipY, pipWidth, pipHeight, "You");
-    }
-    ctx.fillStyle = "rgba(2, 6, 23, 0.72)";
-    ctx.fillRect(pipX, pipY + pipHeight - 30, 58, 30);
-    ctx.fillStyle = "#e2e8f0";
-    ctx.font = "14px sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText("You", pipX + 12, pipY + pipHeight - 15);
-
-    recordingDrawTimer = window.setTimeout(drawRecordingFrame, 1000 / 15);
-  };
-
-  const chooseRecordingMime = () => {
-    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
-    return [
-      "video/mp4;codecs=h264,aac",
-      "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
-      "video/mp4",
-      "video/webm;codecs=vp9,opus",
-      "video/webm;codecs=vp8,opus",
-      "video/webm",
-    ].find((mime) => MediaRecorder.isTypeSupported(mime)) || "";
-  };
-
-  const recordingExtensionForMime = (mime) => {
-    const value = String(mime || "").toLowerCase();
-    if (value.includes("mp4")) return ".mp4";
-    if (value.includes("ogg")) return ".ogv";
-    return ".webm";
-  };
-
-  const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-
-  const uploadRecordingForm = async (formFactory, label) => {
-    let lastError = null;
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      try {
-        const response = await fetch(recordingUrl, {
-          method: "POST",
-          credentials: "same-origin",
-          cache: "no-store",
-          headers: { Accept: "application/json" },
-          body: formFactory(),
-        });
-        if (response.ok) return response;
-        lastError = new Error(`${label} failed with status ${response.status}`);
-      } catch (error) {
-        lastError = error;
-      }
-      await wait(650 * attempt);
-    }
-    throw lastError || new Error(`${label} failed`);
-  };
-
-  function addAudioStreamToRecording(stream) {
-    if (!recordingAudioContext || !recordingAudioDestination || !stream) return;
-    if (recordingConnectedStreams.has(stream)) return;
-    if (!stream.getAudioTracks().some((track) => track.readyState === "live")) return;
-    try {
-      const source = recordingAudioContext.createMediaStreamSource(stream);
-      source.connect(recordingAudioDestination);
-      recordingAudioSources.push(source);
-      recordingConnectedStreams.add(stream);
-    } catch (error) {
-      /* Audio capture is best effort; video replay should still be saved. */
-    }
-  }
-
-  const queueRecordingChunk = (blob) => {
-    if (!recordingUrl || !recordingId || !blob || blob.size <= 0) return;
-    const sequence = recordingChunkSequence;
-    recordingChunkSequence += 1;
-    recordingUploadQueue = recordingUploadQueue
-      .then(async () => {
-        if (recordingUploadFailed) return;
-        await uploadRecordingForm(() => {
-          const form = new FormData();
-          form.append("recording_id", recordingId);
-          form.append("sequence", String(sequence));
-          form.append("mime", recordingMimeType || blob.type || "video/webm");
-          form.append("extension", recordingExtension);
-          form.append("chunk", blob, `chunk-${String(sequence).padStart(5, "0")}${recordingExtension}`);
-          return form;
-        }, "Recording chunk upload");
-      })
-      .catch(() => {
-        recordingUploadFailed = true;
-      });
-  };
-
-  const finalizeRecordingUpload = async () => {
-    await recordingUploadQueue;
-    if (recordingUploadFailed) throw new Error("Recording upload failed");
-    if (!recordingChunkSequence) throw new Error("No recording data captured");
-    const response = await uploadRecordingForm(() => {
-      const form = new FormData();
-      form.append("complete", "1");
-      form.append("recording_id", recordingId);
-      form.append("mime", recordingMimeType || "video/webm");
-      form.append("extension", recordingExtension);
-      return form;
-    }, "Recording finalize");
-    return response.json();
-  };
-
-  const startRecording = async () => {
-    if (role !== "doctor" || !recordingUrl || recordingStarted || !window.MediaRecorder) return;
-    recordingStarted = true;
-    recordingCanvas = document.createElement("canvas");
-    recordingCanvas.width = 960;
-    recordingCanvas.height = 540;
-    recordingContext = recordingCanvas.getContext("2d");
-    if (!recordingContext || !recordingCanvas.captureStream) return;
-
-    recordingCanvasStream = recordingCanvas.captureStream(20);
-    const mixedStream = new MediaStream();
-    recordingCanvasStream.getVideoTracks().forEach((track) => {
-      try {
-        track.contentHint = "motion";
-      } catch (error) {
-        /* Browsers that do not expose contentHint can ignore this. */
-      }
-      mixedStream.addTrack(track);
-    });
-
-    try {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (AudioContextClass) {
-        recordingAudioContext = new AudioContextClass();
-        recordingAudioDestination = recordingAudioContext.createMediaStreamDestination();
-        if (recordingAudioContext.state === "suspended") {
-          await recordingAudioContext.resume().catch(() => {});
-        }
-        addAudioStreamToRecording(localStream);
-        addAudioStreamToRecording(remoteMediaStream);
-        recordingAudioDestination.stream.getAudioTracks().forEach((track) => mixedStream.addTrack(track));
-      }
-    } catch (error) {
-      recordingAudioContext = null;
-      recordingAudioDestination = null;
-    }
-
-    recordingMimeType = chooseRecordingMime();
-    recordingExtension = recordingExtensionForMime(recordingMimeType);
-    recordingId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const recorderOptions = {
-      videoBitsPerSecond: 1100000,
-      audioBitsPerSecond: 64000,
-    };
-    if (recordingMimeType) recorderOptions.mimeType = recordingMimeType;
-
-    try {
-      mediaRecorder = new MediaRecorder(mixedStream, recorderOptions);
-    } catch (error) {
-      try {
-        mediaRecorder = new MediaRecorder(mixedStream);
-      } catch (fallbackError) {
-        if (recordingCanvasStream) recordingCanvasStream.getTracks().forEach((track) => track.stop());
-        setStatus("This browser can run the video session, but cannot record it for replay.");
-        return;
-      }
-    }
-    recordingMimeType = mediaRecorder.mimeType || recordingMimeType || "video/webm";
-    recordingExtension = recordingExtensionForMime(recordingMimeType);
-    mediaRecorder.addEventListener("dataavailable", (event) => {
-      if (event.data && event.data.size > 0) queueRecordingChunk(event.data);
-    });
-    mediaRecorder.addEventListener("error", () => {
-      recordingUploadFailed = true;
-      setStatus("Session recording had an error; the live call can continue.");
-    });
-    mediaRecorder.start(5000);
-    drawRecordingFrame();
-  };
-
-  const stopRecording = async () => {
-    if (!mediaRecorder || mediaRecorder.state === "inactive") return;
-    setStatus("Saving session video before ending...");
-    const stopped = new Promise((resolve) => {
-      mediaRecorder.addEventListener("stop", resolve, { once: true });
-    });
-    try {
-      mediaRecorder.requestData();
-    } catch (error) {
-      /* Some browsers do not allow requestData right before stop. */
-    }
-    mediaRecorder.stop();
-    await stopped;
-    if (recordingDrawTimer) window.clearTimeout(recordingDrawTimer);
-    recordingDrawTimer = null;
-    if (recordingCanvasStream) recordingCanvasStream.getTracks().forEach((track) => track.stop());
-    recordingCanvasStream = null;
-    if (recordingAudioContext) await recordingAudioContext.close().catch(() => {});
-    recordingAudioContext = null;
-    recordingAudioDestination = null;
-    recordingAudioSources.length = 0;
-    await finalizeRecordingUpload();
-    setStatus("Session video saved. Ending consultation...");
-  };
-
   const beginRoom = async (makeOffer) => {
     await ensurePeer();
-    if (role === "doctor") await startRecording();
     await sendSignal("ready", { role });
     if (!signalTimer) signalTimer = window.setInterval(pollSignals, 1400);
     await pollSignals();
@@ -740,31 +595,41 @@
 
   endForm?.addEventListener("submit", async (event) => {
     if (endForm.dataset.submitting === "1") return;
-    if (role !== "doctor" || !mediaRecorder) return;
     event.preventDefault();
     endForm.dataset.submitting = "1";
     const submitButton = endForm.querySelector("button[type='submit']");
     if (submitButton) {
       submitButton.disabled = true;
-      submitButton.textContent = "Saving video...";
+      submitButton.textContent = "Ending...";
     }
+    setStatus("Ending consultation...");
     try {
-      await stopRecording();
-    } catch (error) {
-      setStatus("The video could not be saved. Ending the consultation...");
-      await new Promise((resolve) => window.setTimeout(resolve, 800));
-    }
-    try {
-      await sendSignal("leave", { role });
+      await sendSignal("leave", {
+        role,
+        reason: "ended_by_doctor",
+        at: new Date().toISOString(),
+      });
     } catch (error) {
       /* Leaving is best effort once the session is ending. */
     }
-    if (peer) peer.close();
-    HTMLFormElement.prototype.submit.call(endForm);
+    showEndTransition("Session ended. Returning to consultations...", exitUrl);
+    try {
+      const response = await fetch(endForm.action, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { Accept: "text/html,application/xhtml+xml" },
+      });
+      const targetUrl = response.url || exitUrl || endForm.action;
+      await wait(900);
+      window.location.assign(appUrl(targetUrl));
+    } catch (error) {
+      HTMLFormElement.prototype.submit.call(endForm);
+    }
   });
 
   window.addEventListener("beforeunload", () => {
-    if (peer) {
+    if (!roomEnded && peer) {
       sendSignal("leave", { role }).catch(() => {});
       peer.close();
     }

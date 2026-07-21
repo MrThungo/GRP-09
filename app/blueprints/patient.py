@@ -12,7 +12,6 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
 
-from ..consultation_recordings import has_video_recording, recording_path
 from ..extensions import db
 from ..auth_utils import role_required
 from ..models import (
@@ -25,6 +24,7 @@ from ..notification_pages import clear_user_notifications, mark_user_notificatio
 from ..sa_id import validate_sa_id
 from ..email import send_email
 from ..services import log_audit, notify
+from ..url_utils import external_url_for
 
 bp = Blueprint("patient", __name__, template_folder="../templates/patient")
 
@@ -54,10 +54,7 @@ def _date_filter_value(name):
 
 
 def _portal_url(endpoint, **values):
-    base_url = (current_app.config.get("APP_BASE_URL") or "").rstrip("/")
-    if base_url:
-        return f"{base_url}{url_for(endpoint, **values)}"
-    return url_for(endpoint, _external=True, **values)
+    return external_url_for(endpoint, **values)
 
 
 def _email_doctor_consultation_notice(consultation, subject, body):
@@ -72,7 +69,7 @@ def _email_doctor_consultation_notice(consultation, subject, body):
             f"Hello Dr. {doctor.full_name or doctor.email},\n\n"
             f"{body}\n\n"
             f"Open consultations: {link}\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         ),
     )
 
@@ -276,7 +273,7 @@ def request_online_consultation(consultation_id):
     )
     _email_doctor_consultation_notice(
         consultation,
-        f"NMB-HLab online consultation request: {consultation.request.request_number}",
+        f"MediLab Connect online consultation request: {consultation.request.request_number}",
         (
             f"{consultation.patient.full_name} requested an online consultation "
             f"for {consultation.request.request_number}."
@@ -307,7 +304,7 @@ def request_in_person_consultation(consultation_id):
     )
     _email_doctor_consultation_notice(
         consultation,
-        f"NMB-HLab in-person consultation request: {consultation.request.request_number}",
+        f"MediLab Connect in-person consultation request: {consultation.request.request_number}",
         (
             f"{consultation.patient.full_name} prefers to discuss "
             f"{consultation.request.request_number} in person."
@@ -362,7 +359,7 @@ def book_in_person_consultation(consultation_id):
     )
     _email_doctor_consultation_notice(
         consultation,
-        f"NMB-HLab in-person appointment booked: {consultation.request.request_number}",
+        f"MediLab Connect in-person appointment booked: {consultation.request.request_number}",
         (
             f"{consultation.patient.full_name} booked an in-person discussion for "
             f"{consultation.request.request_number} on {slot.starts_at.strftime('%Y-%m-%d at %H:%M')}."
@@ -394,7 +391,7 @@ def respond_to_consultation(consultation_id):
         )
         _email_doctor_consultation_notice(
             consultation,
-            f"NMB-HLab online consultation accepted: {consultation.request.request_number}",
+            f"MediLab Connect online consultation accepted: {consultation.request.request_number}",
             (
                 f"{consultation.patient.full_name} accepted the online consultation time"
                 f"{' for ' + consultation.scheduled_at.strftime('%Y-%m-%d at %H:%M') if consultation.scheduled_at else ''}."
@@ -413,7 +410,7 @@ def respond_to_consultation(consultation_id):
         )
         _email_doctor_consultation_notice(
             consultation,
-            f"NMB-HLab online consultation declined: {consultation.request.request_number}",
+            f"MediLab Connect online consultation declined: {consultation.request.request_number}",
             (
                 f"{consultation.patient.full_name} declined the online consultation time."
                 f"{' Reason: ' + consultation.decline_reason if consultation.decline_reason else ''}"
@@ -453,35 +450,14 @@ def consultation_room(consultation_id, room_token):
 @bp.route("/consultations/<consultation_id>/record")
 def consultation_record(consultation_id):
     consultation = _patient_consultation_or_404(consultation_id)
-    if not consultation.session_record_body:
-        flash("No consultation record is available yet.", "error")
-        return redirect(url_for("patient.consultation_detail", consultation_id=consultation.id))
-    stream_url = None
-    if has_video_recording(consultation):
-        stream_url = url_for("patient.consultation_record_video", consultation_id=consultation.id)
-    return render_template(
-        "consultations/recording.html",
-        consultation=consultation,
-        stream_url=stream_url,
-        text_record=None if stream_url else consultation.session_record_body,
-        back_url=url_for("patient.consultation_detail", consultation_id=consultation.id),
-    )
+    flash("Saved consultation videos have been disabled.", "info")
+    return redirect(url_for("patient.consultation_detail", consultation_id=consultation.id))
 
 
 @bp.route("/consultations/<consultation_id>/record/video")
 def consultation_record_video(consultation_id):
-    consultation = _patient_consultation_or_404(consultation_id)
-    path = recording_path(consultation)
-    if not path or not (consultation.session_record_mime or "").startswith("video/"):
-        abort(404)
-    return send_file(
-        path,
-        mimetype=consultation.session_record_mime or "video/webm",
-        as_attachment=False,
-        conditional=True,
-        max_age=0,
-        download_name=consultation.session_record_filename or "consultation-recording.webm",
-    )
+    _patient_consultation_or_404(consultation_id)
+    abort(404)
 
 
 @bp.route("/requests")
@@ -1097,7 +1073,7 @@ def _send_consent_email(doctor: User, patient: Patient, requests, note: str, ite
     lines = [
         f"Hello Dr. {doctor.full_name or doctor.email},",
         "",
-        f"{patient.full_name} (MRN {patient.mrn}) has granted you access to selected test results in the NMB-HLab portal.",
+        f"{patient.full_name} (MRN {patient.mrn}) has granted you access to selected test results in the MediLab Connect portal.",
     ]
     if requests:
         lines += ["", "Requests included:"]
@@ -1117,11 +1093,11 @@ def _send_consent_email(doctor: User, patient: Patient, requests, note: str, ite
         "",
         "Please sign in to review the shared records. Access is limited to the results selected by the patient.",
         "",
-        "- NMB-HLab",
+        "- MediLab Connect",
     ]
     sent = send_email(
         [doctor.email],
-        f"NMB-HLab - {patient.full_name} granted you access",
+        f"MediLab Connect - {patient.full_name} granted you access",
         "\n".join(lines),
     )
     if not sent:

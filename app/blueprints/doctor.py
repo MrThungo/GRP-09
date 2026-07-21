@@ -8,7 +8,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
 
-from ..consultation_recordings import extend_recording_expiry, has_video_recording, recording_path
+from ..consultation_recordings import delete_recording_file
 from ..extensions import db
 from ..auth_utils import role_required
 from ..models import (
@@ -36,11 +36,20 @@ from ..notification_pages import clear_user_notifications, mark_user_notificatio
 from ..reports import build_request_results_pdf
 from ..sa_id import validate_sa_id
 from ..services import doctor_return_item_for_review, release_request, log_audit, notify, send_email
+from ..url_utils import external_url_for
 from ..whatsapp import send_account_welcome_whatsapp
 
 bp = Blueprint("doctor", __name__, template_folder="../templates/doctor")
 
 ALLOWED_AVATAR_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
+def _ready_to_release_query(query):
+    return query.filter(
+        TestRequest.status == "completed",
+        TestRequest.items.any(TestRequestItem.status != "cancelled"),
+        ~TestRequest.items.any(TestRequestItem.status.notin_(("verified", "cancelled"))),
+    )
 
 
 @bp.before_request
@@ -80,11 +89,7 @@ def dashboard():
         .all()
     ))
 
-    ready_count = base_query.filter(
-        TestRequest.status == "completed",
-        TestRequest.items.any(),
-        ~TestRequest.items.any(TestRequestItem.status != "verified"),
-    ).count()
+    ready_count = _ready_to_release_query(base_query).count()
     
     stats = {
         "open": sum(status_counts.get(status, 0) for status in ["submitted", "samples_received", "in_progress"]),
@@ -231,13 +236,19 @@ def requests_list():
     if priority:
         query = query.filter_by(priority=priority)
     
-    if request.args.get('verified') == '1':
-        pass
+    ready_filter = request.args.get('verified') == '1'
+    if ready_filter:
+        query = _ready_to_release_query(query)
     
     rows = query.order_by(TestRequest.created_at.desc()).all()
     today_date = date.today().isoformat()
     
-    return render_template("doctor/requests.html", requests=rows, today_date=today_date)
+    return render_template(
+        "doctor/requests.html",
+        requests=rows,
+        today_date=today_date,
+        ready_filter=ready_filter,
+    )
 
 
 @bp.route("/requests/new", methods=["GET", "POST"])
@@ -299,12 +310,12 @@ def request_new():
         if patient and patient.email:
             send_email(
                 [patient.email],
-                f"NMB-HLab test request submitted: {req.request_number}",
+                f"MediLab Connect test request submitted: {req.request_number}",
                 (
                     f"Hello {patient.full_name},\n\n"
                     f"Dr. {current_user.full_name or current_user.email} has submitted laboratory request {req.request_number} on your behalf.\n\n"
-                    "You can sign in to the NMB-HLab portal to follow the request status and view updates when they are available.\n\n"
-                    "- NMB-HLab"
+                    "You can sign in to the MediLab Connect portal to follow the request status and view updates when they are available.\n\n"
+                    "- MediLab Connect"
                 ),
             )
 
@@ -374,10 +385,7 @@ def _latest_consultation_for_request(req):
 
 
 def _portal_url(endpoint, **values):
-    base_url = (current_app.config.get("APP_BASE_URL") or "").rstrip("/")
-    if base_url:
-        return f"{base_url}{url_for(endpoint, **values)}"
-    return url_for(endpoint, _external=True, **values)
+    return external_url_for(endpoint, **values)
 
 
 def _patient_email_for_consultation(consultation):
@@ -401,7 +409,7 @@ def _email_patient_consultation_notice(consultation, subject, body, endpoint, **
             f"Hello {patient_name},\n\n"
             f"{body}\n\n"
             f"Open consultation: {link}\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         ),
     )
 
@@ -433,7 +441,7 @@ def _ensure_consultation_offer(req, message=None):
     )
     _email_patient_consultation_notice(
         consultation,
-        f"NMB-HLab consultation choice: {req.request_number}",
+        f"MediLab Connect consultation choice: {req.request_number}",
         (
             f"Your results for {req.request_number} are ready. "
             "Please choose whether you prefer an in-person discussion or an invite-only online consultation."
@@ -501,34 +509,6 @@ def _upcoming_availability_slots():
             .order_by(DoctorAvailabilitySlot.starts_at.asc())
             .limit(40)
             .all())
-
-
-def _store_consultation_record(consultation):
-    if has_video_recording(consultation):
-        return
-
-    ended_at = consultation.ended_at or datetime.now()
-    started_at = consultation.doctor_started_at or ended_at
-    duration_minutes = max(0, int((ended_at - started_at).total_seconds() // 60))
-    lines = [
-        "NMB-HLab Online Consultation Record",
-        f"Consultation ID: {consultation.id}",
-        f"Request: {consultation.request.request_number if consultation.request else consultation.request_id}",
-        f"Patient: {consultation.patient.full_name if consultation.patient else consultation.patient_id}",
-        f"Doctor: {consultation.doctor.full_name or consultation.doctor.email if consultation.doctor else consultation.doctor_id}",
-        f"Scheduled: {consultation.scheduled_at.strftime('%Y-%m-%d %H:%M') if consultation.scheduled_at else 'Not scheduled'}",
-        f"Started: {started_at.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Ended: {ended_at.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"Duration minutes: {duration_minutes}",
-        "",
-        "Storage policy: A playable video is shown when the browser recording was saved.",
-        "This text record is kept only as a fallback for sessions without a saved video.",
-    ]
-    body = "\n".join(lines) + "\n"
-    consultation.session_record_filename = f"consultation-{consultation.id}.txt"
-    consultation.session_record_mime = "text/plain"
-    consultation.session_record_size = len(body.encode("utf-8"))
-    consultation.session_record_body = body
 
 
 @bp.route("/requests/<request_id>")
@@ -712,7 +692,7 @@ def invite_consultation(consultation_id):
         )
     _email_patient_consultation_notice(
         consultation,
-        f"NMB-HLab online consultation invite: {consultation.request.request_number}",
+        f"MediLab Connect online consultation invite: {consultation.request.request_number}",
         (
             f"Your doctor invited you to discuss {consultation.request.request_number} "
             f"on {scheduled_at.strftime('%Y-%m-%d at %H:%M')}."
@@ -746,7 +726,7 @@ def start_consultation(consultation_id):
             )
         _email_patient_consultation_notice(
             consultation,
-            f"NMB-HLab online consultation started: {consultation.request.request_number}",
+            f"MediLab Connect online consultation started: {consultation.request.request_number}",
             "Your doctor has opened the secure consultation room.",
             "patient.consultation_waiting",
             consultation_id=consultation.id,
@@ -765,7 +745,14 @@ def end_consultation(consultation_id):
         return redirect(url_for("doctor.consultations"))
     consultation.status = "completed"
     consultation.ended_at = datetime.now()
-    _store_consultation_record(consultation)
+    try:
+        delete_recording_file(consultation)
+    except Exception:
+        current_app.logger.warning(
+            "Consultation recording cleanup failed for %s",
+            consultation.id,
+            exc_info=True,
+        )
     log_audit(current_user.id, "complete_online_consultation", "online_consultation", consultation.id)
     db.session.commit()
     flash("Online consultation completed.", "success")
@@ -774,59 +761,22 @@ def end_consultation(consultation_id):
 
 @bp.route("/consultations/<consultation_id>/record")
 def consultation_record(consultation_id):
-    consultation = _doctor_consultation_or_404(consultation_id)
-    if not consultation.session_record_body:
-        flash("No consultation record is available yet.", "error")
-        return redirect(url_for("doctor.consultations"))
-    stream_url = None
-    if has_video_recording(consultation):
-        stream_url = url_for("doctor.consultation_record_video", consultation_id=consultation.id)
-    return render_template(
-        "consultations/recording.html",
-        consultation=consultation,
-        stream_url=stream_url,
-        text_record=None if stream_url else consultation.session_record_body,
-        back_url=url_for("doctor.consultations"),
-    )
+    _doctor_consultation_or_404(consultation_id)
+    flash("Saved consultation videos have been disabled.", "info")
+    return redirect(url_for("doctor.consultations"))
 
 
 @bp.route("/consultations/<consultation_id>/record/video")
 def consultation_record_video(consultation_id):
-    consultation = _doctor_consultation_or_404(consultation_id)
-    path = recording_path(consultation)
-    if not path or not (consultation.session_record_mime or "").startswith("video/"):
-        abort(404)
-    return send_file(
-        path,
-        mimetype=consultation.session_record_mime or "video/webm",
-        as_attachment=False,
-        conditional=True,
-        max_age=0,
-        download_name=consultation.session_record_filename or "consultation-recording.webm",
-    )
+    _doctor_consultation_or_404(consultation_id)
+    abort(404)
 
 
 @bp.route("/consultations/<consultation_id>/record/extend", methods=["POST"])
 def extend_consultation_record(consultation_id):
-    consultation = _doctor_consultation_or_404(consultation_id)
-    if not has_video_recording(consultation):
-        flash("No saved consultation video is available to extend.", "error")
-        return redirect(url_for("doctor.consultations"))
-    try:
-        days = int(request.form.get("days") or 30)
-    except ValueError:
-        days = 30
-    expires_at = extend_recording_expiry(consultation, days=days)
-    log_audit(
-        current_user.id,
-        "extend_consultation_recording",
-        "online_consultation",
-        consultation.id,
-        {"days": days, "expires_at": expires_at.isoformat()},
-    )
-    db.session.commit()
-    flash(f"Recording expiry extended to {expires_at.strftime('%Y-%m-%d %H:%M')}.", "success")
-    return redirect(url_for("doctor.consultation_record", consultation_id=consultation.id))
+    _doctor_consultation_or_404(consultation_id)
+    flash("Saved consultation videos have been disabled.", "info")
+    return redirect(url_for("doctor.consultations"))
 
 
 @bp.route("/consultations/<consultation_id>/room/<room_token>")
@@ -920,13 +870,13 @@ def cancel_request(request_id):
     if patient and patient.email:
         send_email(
             [patient.email],
-            f"NMB-HLab request cancelled: {req.request_number}",
+            f"MediLab Connect request cancelled: {req.request_number}",
             (
                 f"Hello {patient.full_name or patient.email},\n\n"
                 f"Laboratory request {req.request_number} has been cancelled by the requesting doctor.\n\n"
                 f"Reason: {reason}\n\n"
                 "If you have questions, please contact your doctor or the laboratory.\n\n"
-                "- NMB-HLab"
+                "- MediLab Connect"
             ),
         )
         
@@ -1015,19 +965,19 @@ def user_new():
                 if selected_medication_ids else []
             )
             db.session.add(patient)
-            notify(u.id, "Your NMB-Lab account is ready",
+            notify(u.id, "Your MediLab Connect account is ready",
                    f"You have been added as a {ROLE_LABELS[role]}. Sign in and change your password.", "/app")
             log_audit(current_user.id, "doctor_create_patient", "user", u.id, {"role": role})
             db.session.commit()
             sent = send_email(
                 [email],
-                "Your NMB-HLab patient account",
+                "Your MediLab Connect patient account",
                 (
                     f"Hello {full_name},\n\n"
-                    "Your NMB-HLab patient account has been created.\n\n"
+                    "Your MediLab Connect patient account has been created.\n\n"
                     f"Temporary password: {generated}\n\n"
                     "For security, you will be asked to choose a new password the first time you sign in.\n\n"
-                    "- NMB-HLab"
+                    "- MediLab Connect"
                 ),
             )
             whatsapp_sent = send_account_welcome_whatsapp(

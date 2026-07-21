@@ -6,11 +6,6 @@ from flask import Blueprint, abort, current_app, jsonify, request, url_for
 from flask_login import login_required, current_user
 from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
-from ..consultation_recordings import (
-    append_recording_chunk,
-    finalize_chunked_recording,
-    store_recording_file,
-)
 from ..extensions import db
 from ..models import (
     AccessRequest,
@@ -227,7 +222,10 @@ def _live_snapshot_payload():
         payload.update({
             "catalog_latest": _iso(_max_dt(TestCatalog.query, TestCatalog.created_at)),
             "consumables_latest": _iso(_max_dt(Consumable.query, Consumable.updated_at)),
-            "orders_latest": _iso(_max_dt(ConsumableOrder.query, ConsumableOrder.updated_at)),
+            "orders_latest": _iso(_max_dt(ConsumableOrder.query, ConsumableOrder.ordered_at)),
+            "orders_received": _iso(_max_dt(ConsumableOrder.query, ConsumableOrder.received_at)),
+            "orders_completed": _iso(_max_dt(ConsumableOrder.query, ConsumableOrder.completed_at)),
+            "orders_cancelled": _iso(_max_dt(ConsumableOrder.query, ConsumableOrder.cancelled_at)),
             "stock_latest": _iso(_max_dt(StockMovement.query, StockMovement.created_at)),
             "order_statuses": _group_counts(ConsumableOrder.query, ConsumableOrder.status),
         })
@@ -257,6 +255,7 @@ def _live_snapshot_cache_entry():
         "created_at": now,
         "version": version,
         "body": {
+            **payload,
             "version": version,
             "generated_at": now.isoformat(),
             "notifications_unread": payload.get("notifications_unread", 0),
@@ -515,48 +514,5 @@ def consultation_signals(consultation_id, room_token):
 @bp.route("/consultations/<consultation_id>/<room_token>/recording", methods=["POST"])
 @login_required
 def consultation_recording(consultation_id, room_token):
-    consultation = _consultation_participant_or_404(consultation_id, room_token)
-    if current_user.id != consultation.doctor_id:
-        return jsonify({"error": "forbidden"}), 403
-    if consultation.status not in ("started", "completed"):
-        return jsonify({"error": "session_not_active"}), 409
-
-    try:
-        if request.form.get("complete") == "1":
-            finalize_chunked_recording(
-                consultation,
-                request.form.get("recording_id"),
-                request.form.get("mime") or "video/webm",
-                request.form.get("extension") or ".webm",
-            )
-            db.session.commit()
-            return jsonify({
-                "ok": True,
-                "filename": consultation.session_record_filename,
-                "mime": consultation.session_record_mime,
-                "size": consultation.session_record_size,
-            })
-
-        chunk = request.files.get("chunk")
-        if chunk:
-            size = append_recording_chunk(
-                consultation,
-                request.form.get("recording_id"),
-                chunk,
-            )
-            db.session.commit()
-            return jsonify({"ok": True, "size": size})
-
-        uploaded = request.files.get("recording")
-        if not uploaded:
-            return jsonify({"error": "missing_recording"}), 400
-        store_recording_file(consultation, uploaded)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
-    db.session.commit()
-    return jsonify({
-        "ok": True,
-        "filename": consultation.session_record_filename,
-        "mime": consultation.session_record_mime,
-        "size": consultation.session_record_size,
-    })
+    _consultation_participant_or_404(consultation_id, room_token)
+    return jsonify({"error": "recording_disabled"}), 410

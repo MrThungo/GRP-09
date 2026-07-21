@@ -119,7 +119,7 @@
     }
     async function tick() {
       try {
-        const r = await fetch(`/api/online-users?page=${encodeURIComponent(page)}&per_page=12`, { credentials: "same-origin" });
+        const r = await fetch(window.nmbUrl(`/api/online-users?page=${encodeURIComponent(page)}&per_page=12`), { credentials: "same-origin" });
         if (!r.ok) return;
         const data = await r.json();
         if (onlineCountEl) onlineCountEl.textContent = data.online_count;
@@ -133,7 +133,7 @@
       } catch (e) {}
     }
     tick();
-    setInterval(tick, 1000);
+    setInterval(tick, 6000);
   })();
 </script>
 {% endblock %}

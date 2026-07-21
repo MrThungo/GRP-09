@@ -7,6 +7,7 @@ from .models import (
     TestRequest, TestRequestItem, TechnicianTest, TestResultReview, ChatMessage,
 )
 from .reports import build_request_results_pdf
+from .url_utils import app_url
 
 
 def log_audit(actor_id, action, entity_type=None, entity_id=None, details=None):
@@ -77,19 +78,21 @@ def release_request(req: TestRequest, actor_id, note=None):
         ))
     if not already_released and req.patient and req.patient.email:
         pdf = build_request_results_pdf(req)
+        results_url = app_url("/patient/results", external=True)
         patient_body = (
             f"Hello {req.patient.full_name or req.patient.email},\n\n"
-            f"Results for request {req.request_number} are now available in the NMB-HLab portal.\n\n"
+            f"Results for request {req.request_number} are now available in the MediLab Connect portal.\n\n"
         )
         if note:
             patient_body += f"Release note: {note}\n\n"
         patient_body += (
             "Please sign in to view the report. If you have questions about the results, contact your doctor or the laboratory.\n\n"
+            f"Open results: {results_url}\n\n"
             ""
         )
         send_email(
             [req.patient.email],
-            f"NMB-HLab results released: {req.request_number}",
+            f"MediLab Connect results released: {req.request_number}",
             patient_body,
             [(f"{req.request_number}-results.pdf", "application/pdf", pdf.getvalue())],
         )
@@ -135,13 +138,15 @@ def verify_item(item: TestRequestItem, actor_id, note=None):
                    f"Request {req.request_number} has been verified and is ready to release.",
                    f"/doctor/requests/{req.id}")
             if req.doctor and req.doctor.email:
+                request_url = app_url(f"/doctor/requests/{req.id}", external=True)
                 send_email(
                     [req.doctor.email],
-                    f"NMB-HLab verified results: {req.request_number}",
+                    f"MediLab Connect verified results: {req.request_number}",
                     (
                         f"Hello Dr. {req.doctor.full_name or req.doctor.email},\n\n"
                         f"Results for request {req.request_number} have been verified by the laboratory.\n\n"
                         "Please review the attached report and release it to the patient when appropriate.\n\n"
+                        f"Open request: {request_url}\n\n"
                         ""
                     ),
                     [(f"{req.request_number}-verified-results.pdf", "application/pdf", pdf.getvalue())],

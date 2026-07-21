@@ -12,7 +12,7 @@ import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
 
-from flask import current_app, has_request_context, request, url_for
+from flask import current_app
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 
@@ -45,6 +45,7 @@ from .models import (
 from .reports import format_reference, format_result_value
 from .sa_id import validate_sa_id
 from .services import log_audit, notify, send_email as send_portal_email
+from .url_utils import external_url_for
 
 
 @dataclass
@@ -89,7 +90,7 @@ def twilio_patient_identity(user):
 
 
 def twilio_bot_identity():
-    return current_app.config.get("TWILIO_BOT_IDENTITY") or "nmb-hlab-bot"
+    return current_app.config.get("TWILIO_BOT_IDENTITY") or "medilab-connect-bot"
 
 
 def user_from_twilio_identity(identity):
@@ -319,15 +320,7 @@ def _match_catalog_items(model, value):
 
 
 def _app_link(endpoint, label, **values):
-    path = url_for(endpoint, **values)
-    base = (current_app.config.get("APP_BASE_URL") or "").rstrip("/")
-    if base:
-        href = f"{base}/{path.lstrip('/')}"
-    elif has_request_context():
-        href = urllib.parse.urljoin(request.host_url, path.lstrip("/"))
-    else:
-        href = path
-    return {"label": label, "url": href}
+    return {"label": label, "url": external_url_for(endpoint, **values)}
 
 
 def _role_label(user):
@@ -667,13 +660,13 @@ def _admin_reset_password_reply(actor, target):
     db.session.commit()
     sent = send_portal_email(
         [target.email],
-        "Your NMB-HLab temporary password",
+        "Your MediLab Connect temporary password",
         (
             f"Hello {target.full_name or target.email},\n\n"
-            "Your NMB-HLab password has been reset by an administrator.\n\n"
+            "Your MediLab Connect password has been reset by an administrator.\n\n"
             f"Temporary password: {new_password}\n\n"
             "For security, you will be asked to choose a new password the next time you sign in.\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         ),
     )
     if sent:
@@ -2543,7 +2536,7 @@ def ensure_twilio_user_conversation(user):
             "Conversations",
             {
                 "UniqueName": unique_name,
-                "FriendlyName": f"NMB-HLab portal assistant - {user.full_name or user.email}",
+                "FriendlyName": f"MediLab Connect portal assistant - {user.full_name or user.email}",
             },
         )
     if not (200 <= status < 300):

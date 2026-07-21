@@ -13,6 +13,7 @@ from ..auth_utils import password_policy_error
 from ..email import send_email
 from ..services import notify_admins, log_audit
 from ..sa_id import validate_sa_id
+from ..url_utils import external_url_for
 from ..whatsapp import send_account_welcome_whatsapp
 
 bp = Blueprint("auth", __name__, template_folder="../templates/auth")
@@ -187,13 +188,13 @@ def signup():
         db.session.commit()
         sent = send_email(
             [email],
-            "Your NMB-HLab patient account",
+            "Your MediLab Connect patient account",
             (
                 f"Hello {full_name},\n\n"
-                "Your NMB-HLab patient account has been created.\n\n"
+                "Your MediLab Connect patient account has been created.\n\n"
                 f"Temporary password: {generated_password}\n\n"
                 "For security, you will be asked to choose a new password the first time you sign in.\n\n"
-                "- NMB-HLab"
+                "- MediLab Connect"
             ),
         )
         whatsapp_sent = send_account_welcome_whatsapp(
@@ -309,21 +310,20 @@ def logout():
 # ---------------------------------------------------------------------------
 
 def _build_reset_url(token: str) -> str:
-    base = current_app.config.get("APP_BASE_URL") or request.host_url.rstrip("/")
-    return f"{base}{url_for('auth.reset_password', token=token)}"
+    return external_url_for("auth.reset_password", token=token)
 
 
 def _send_reset_email(user: User, reset_url: str) -> bool:
     sent = send_email(
         [user.email],
-        "NMB-HLab - password reset",
+        "MediLab Connect - password reset",
         (
             f"Hello {user.full_name or user.email},\n\n"
-            "A password reset was requested for your NMB-HLab account.\n\n"
+            "A password reset was requested for your MediLab Connect account.\n\n"
             "Use the secure link below to set a new password. This link expires in 5 minutes:\n"
             f"{reset_url}\n\n"
             "If you did not request this change, no action is required. Your password will remain unchanged.\n\n"
-            "- NMB-HLab"
+            "- MediLab Connect"
         ),
     )
     if not sent:

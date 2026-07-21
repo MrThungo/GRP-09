@@ -29,12 +29,12 @@ def _load_environment_files():
     def fallback_values(path):
         values = {}
         try:
-            for line in path.read_text(encoding="utf-8").splitlines():
+            for line in path.read_text(encoding="utf-8-sig").splitlines():
                 line = line.strip()
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, value = line.split("=", 1)
-                values[key.strip()] = value.strip().strip('"').strip("'")
+                values[key.strip().lstrip("\ufeff")] = value.strip().strip('"').strip("'")
         except OSError:
             return values
         return values
@@ -53,7 +53,12 @@ def _load_environment_files():
     for path in (project_root / ".env", project_root / "env.txt"):
         if not path.exists():
             continue
-        for key, value in dotenv_values(path).items():
+        try:
+            parsed_values = dotenv_values(path, encoding="utf-8-sig")
+        except TypeError:
+            parsed_values = dotenv_values(path)
+        for key, value in parsed_values.items():
+            key = str(key or "").strip().lstrip("\ufeff")
             if not key or value is None or key in os.environ:
                 continue
             clean_value = value.strip()
@@ -236,15 +241,25 @@ def _ensure_indexes(app):
         db.session.commit()
 
 
+def _env_value(*names, default=None):
+    for name in names:
+        value = os.environ.get(name)
+        if value is not None and str(value).strip() != "":
+            return str(value).strip()
+    return default
+
+
 def _env_bool(name, default=False):
-    v = os.environ.get(name)
+    names = (name,) if isinstance(name, str) else tuple(name)
+    v = _env_value(*names)
     if v is None:
         return default
     return v.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _env_list(name, default=None):
-    raw = os.environ.get(name)
+    names = (name,) if isinstance(name, str) else tuple(name)
+    raw = _env_value(*names)
     if raw is None:
         return list(default or [])
     return [
@@ -279,6 +294,7 @@ def create_app():
             "Set SECRET_KEY in env.txt or the server environment before publishing."
         )
     app.config["SECRET_KEY"] = secret_key
+    app.config["APP_NAME"] = _env_value("APP_NAME", default="MediLab Connect")
     app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///nmb.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["PRESENCE_WRITE_INTERVAL_SECONDS"] = int(
@@ -288,13 +304,23 @@ def create_app():
         os.environ.get("LIVE_SNAPSHOT_CACHE_SECONDS", "3")
     )
     app.config["WEBRTC_STUN_URLS"] = _env_list(
-        "WEBRTC_STUN_URLS",
-        ["stun:stun.l.google.com:19302"],
+        ("WEBRTC_STUN_URLS", "STUN_URLS"),
+        [
+            "stun:stun.l.google.com:19302",
+            "stun:stun1.l.google.com:19302",
+            "stun:stun2.l.google.com:19302",
+        ],
     )
-    app.config["WEBRTC_TURN_URLS"] = _env_list("WEBRTC_TURN_URLS")
-    app.config["WEBRTC_TURN_USERNAME"] = os.environ.get("WEBRTC_TURN_USERNAME", "")
-    app.config["WEBRTC_TURN_CREDENTIAL"] = os.environ.get("WEBRTC_TURN_CREDENTIAL", "")
-    app.config["WEBRTC_FORCE_RELAY"] = _env_bool("WEBRTC_FORCE_RELAY", False)
+    app.config["WEBRTC_TURN_URLS"] = _env_list(("WEBRTC_TURN_URLS", "TURN_URLS"))
+    app.config["WEBRTC_TURN_USERNAME"] = _env_value("WEBRTC_TURN_USERNAME", "TURN_USERNAME", default="")
+    app.config["WEBRTC_TURN_CREDENTIAL"] = _env_value(
+        "WEBRTC_TURN_CREDENTIAL",
+        "WEBRTC_TURN_PASSWORD",
+        "TURN_CREDENTIAL",
+        "TURN_PASSWORD",
+        default="",
+    )
+    app.config["WEBRTC_FORCE_RELAY"] = _env_bool(("WEBRTC_FORCE_RELAY", "TURN_FORCE_RELAY"), False)
     local_llm_url = (
         os.environ.get("LOCAL_LLM_API_URL")
         or os.environ.get("OLLAMA_BASE_URL")
@@ -316,17 +342,41 @@ def create_app():
     except ValueError:
         app.config["LOCAL_LLM_FAILURE_COOLDOWN_SECONDS"] = 20.0
     try:
-        app.config["CONSULTATION_RECORDING_RETENTION_DAYS"] = int(
-            os.environ.get("CONSULTATION_RECORDING_RETENTION_DAYS", "30")
-        )
+        retention_days = int(_env_value("CONSULTATION_RECORDING_RETENTION_DAYS", default="30"))
     except ValueError:
-        app.config["CONSULTATION_RECORDING_RETENTION_DAYS"] = 30
+        retention_days = 30
     try:
-        app.config["CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS"] = int(
-            os.environ.get("CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS", "7")
+        retention_hours = int(
+            _env_value(
+                "CONSULTATION_RECORDING_RETENTION_HOURS",
+                default=str(retention_days * 24),
+            )
         )
     except ValueError:
-        app.config["CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS"] = 7
+        retention_hours = retention_days * 24
+    app.config["CONSULTATION_RECORDING_RETENTION_HOURS"] = max(24, retention_hours)
+    app.config["CONSULTATION_RECORDING_RETENTION_DAYS"] = max(
+        1,
+        (app.config["CONSULTATION_RECORDING_RETENTION_HOURS"] + 23) // 24,
+    )
+    try:
+        warning_days = int(_env_value("CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS", default="7"))
+    except ValueError:
+        warning_days = 7
+    try:
+        warning_hours = int(
+            _env_value(
+                "CONSULTATION_RECORDING_EXPIRY_WARNING_HOURS",
+                default=str(warning_days * 24),
+            )
+        )
+    except ValueError:
+        warning_hours = warning_days * 24
+    app.config["CONSULTATION_RECORDING_EXPIRY_WARNING_HOURS"] = max(1, warning_hours)
+    app.config["CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS"] = max(
+        1,
+        (app.config["CONSULTATION_RECORDING_EXPIRY_WARNING_HOURS"] + 23) // 24,
+    )
     try:
         app.config["CONSULTATION_RECORDING_CLEANUP_INTERVAL_SECONDS"] = int(
             os.environ.get("CONSULTATION_RECORDING_CLEANUP_INTERVAL_SECONDS", "3600")
@@ -346,17 +396,41 @@ def create_app():
         "https" if app.config["SESSION_COOKIE_SECURE"] else "http",
     )
 
-    # SMTP / Flask-Mail (set via env: MAIL_SERVER, MAIL_PORT, MAIL_USERNAME, MAIL_PASSWORD,
-    # MAIL_USE_TLS, MAIL_USE_SSL, MAIL_DEFAULT_SENDER, APP_BASE_URL)
-    app.config["MAIL_SERVER"]   = os.environ.get("MAIL_SERVER", "localhost")
-    app.config["MAIL_PORT"]     = int(os.environ.get("MAIL_PORT", "465"))
-    app.config["MAIL_USERNAME"] = os.environ.get("MAIL_USERNAME") or None
-    app.config["MAIL_PASSWORD"] = os.environ.get("MAIL_PASSWORD") or None
-    app.config["MAIL_USE_TLS"]  = _env_bool("MAIL_USE_TLS", False)
-    app.config["MAIL_USE_SSL"]  = _env_bool("MAIL_USE_SSL", True)
-    app.config["MAIL_DEFAULT_SENDER"] = os.environ.get(
-        "MAIL_DEFAULT_SENDER", "no-reply@nmbhlab.local"
+    # SMTP / Flask-Mail (set via env.txt or server environment).
+    # Supports MAIL_* plus SMTP_* aliases for deployment panels.
+    app.config["MAIL_SERVER"] = _env_value("MAIL_SERVER", "SMTP_HOST", "SMTP_SERVER", default="localhost")
+    try:
+        app.config["MAIL_PORT"] = int(_env_value("MAIL_PORT", "SMTP_PORT", default="465"))
+    except ValueError:
+        app.config["MAIL_PORT"] = 465
+    ssl_explicit = _env_value("MAIL_USE_SSL", "SMTP_USE_SSL")
+    app.config["MAIL_USE_SSL"] = _env_bool(
+        ("MAIL_USE_SSL", "SMTP_USE_SSL"),
+        app.config["MAIL_PORT"] == 465,
     )
+    app.config["MAIL_USE_TLS"] = _env_bool(
+        ("MAIL_USE_TLS", "SMTP_USE_TLS"),
+        app.config["MAIL_PORT"] == 587,
+    )
+    if app.config["MAIL_PORT"] == 465 and ssl_explicit is None:
+        app.config["MAIL_USE_SSL"] = True
+        app.config["MAIL_USE_TLS"] = False
+    if app.config["MAIL_USE_SSL"]:
+        app.config["MAIL_USE_TLS"] = False
+    app.config["MAIL_USERNAME"] = _env_value("MAIL_USERNAME", "SMTP_USERNAME")
+    app.config["MAIL_PASSWORD"] = _env_value("MAIL_PASSWORD", "SMTP_PASSWORD")
+    app.config["MAIL_DEFAULT_SENDER"] = _env_value(
+        "MAIL_DEFAULT_SENDER",
+        "SMTP_DEFAULT_SENDER",
+        default=app.config["MAIL_USERNAME"] or "no-reply@medilabconnect.local",
+    )
+    try:
+        app.config["SMTP_TIMEOUT_SECONDS"] = max(
+            3,
+            int(os.environ.get("SMTP_TIMEOUT_SECONDS", "12")),
+        )
+    except ValueError:
+        app.config["SMTP_TIMEOUT_SECONDS"] = 12
     app.config["APP_BASE_URL"] = os.environ.get("APP_BASE_URL", "")
     is_sqlite = app.config["SQLALCHEMY_DATABASE_URI"].lower().startswith("sqlite")
     app.config["ENABLE_QUICK_LOGIN"] = _env_bool("ENABLE_QUICK_LOGIN", is_sqlite)
@@ -414,7 +488,7 @@ def create_app():
         "TWILIO_CONVERSATIONS_SERVICE_SID", ""
     )
     app.config["TWILIO_BOT_IDENTITY"] = os.environ.get(
-        "TWILIO_BOT_IDENTITY", "nmb-hlab-bot"
+        "TWILIO_BOT_IDENTITY", "medilab-connect-bot"
     )
     app.config["TWILIO_CONVERSATIONS_API_BASE"] = os.environ.get(
         "TWILIO_CONVERSATIONS_API_BASE", "https://conversations.twilio.com/v1"
@@ -515,6 +589,15 @@ def create_app():
     from .avatar_utils import render_avatar, initials_for
     app.jinja_env.globals["render_avatar"] = render_avatar
     app.jinja_env.globals["initials_for"] = initials_for
+
+    @app.context_processor
+    def _template_helpers():
+        from .url_utils import app_url
+
+        return {
+            "app_name": app.config.get("APP_NAME", "MediLab Connect"),
+            "app_url": app_url,
+        }
 
     @app.cli.command("cleanup-recordings")
     @with_appcontext

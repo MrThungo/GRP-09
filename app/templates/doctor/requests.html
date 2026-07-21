@@ -14,13 +14,14 @@
                 <label class="text-xs text-slate-400 block mb-1">Status</label>
                 <select id="status_filter" class="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded text-sm">
                     <option value="">All Statuses</option>
-                    <option value="submitted">Submitted</option>
-                    <option value="samples_received">Samples Received</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="completed">Completed</option>
-                    <option value="verified">Verified</option>
-                    <option value="released">Released</option>
-                    <option value="cancelled">Cancelled</option>
+                    {% set selected_status = request.args.get('status') or '' %}
+                    <option value="submitted" {% if selected_status == 'submitted' %}selected{% endif %}>Submitted</option>
+                    <option value="samples_received" {% if selected_status == 'samples_received' %}selected{% endif %}>Samples Received</option>
+                    <option value="in_progress" {% if selected_status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                    <option value="completed" {% if selected_status == 'completed' %}selected{% endif %}>Completed</option>
+                    <option value="verified" {% if selected_status == 'verified' %}selected{% endif %}>Verified</option>
+                    <option value="released" {% if selected_status == 'released' %}selected{% endif %}>Released</option>
+                    <option value="cancelled" {% if selected_status == 'cancelled' %}selected{% endif %}>Cancelled</option>
                 </select>
             </div>
 
@@ -60,6 +61,12 @@
         </div>
     </div>
 
+    {% if ready_filter %}
+    <div class="rounded-lg border border-amber-800/70 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
+        These requests have all active tests verified and are ready for doctor review and patient release.
+    </div>
+    {% endif %}
+
     <!-- Requests Table -->
     <div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
         <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
@@ -71,7 +78,7 @@
             <table class="w-full text-sm" id="requests_table">
                 <thead class="text-left text-slate-400 text-xs uppercase bg-slate-900">
                     <tr>
-                        <th class="px-4 py-2 cursor-pointer hover:text-white sortable" data-sort="number">Number ↓</th>
+                        <th class="px-4 py-2 cursor-pointer hover:text-white sortable" data-sort="number">Number </th>
                         <th class="px-4 py-2 cursor-pointer hover:text-white sortable" data-sort="patient">Patient</th>
                         <th class="px-4 py-2 cursor-pointer hover:text-white sortable" data-sort="status">Status</th>
                         <th class="px-4 py-2 cursor-pointer hover:text-white sortable" data-sort="priority">Priority</th>
@@ -102,7 +109,12 @@
                             <div class="text-[11px] text-slate-500">ID: {{ patient_id_number }}</div>
                             {% endif %}
                         </td>
-                        <td>{{ status_badge(r.status) }}</td>
+                        <td>
+                            {{ status_badge(r.status) }}
+                            {% if r.status == 'completed' and r.all_verified %}
+                            <div class="mt-1 text-[11px] font-semibold text-amber-300">Ready to release</div>
+                            {% endif %}
+                        </td>
                         <td>
                             <span class="px-2 py-0.5 rounded text-xs whitespace-nowrap
                                 {% if r.priority == 'stat' %}bg-red-600 text-white
@@ -124,11 +136,16 @@
                                    View
                                 </a>
 
-                                {% if r.status in ['submitted', 'samples_received'] %}
+                                {% if r.status == 'completed' and r.all_verified %}
+                                <a href="{{ url_for('doctor.request_detail', request_id=r.id) }}"
+                                   class="px-2.5 py-1 bg-amber-700 hover:bg-amber-600 rounded text-xs transition">
+                                    Review &amp; release
+                                </a>
+                                {% elif r.status in ['submitted', 'samples_received'] %}
                                 <a href="{{ url_for('doctor.generate_result_pdf', request_id=r.id) }}"
                                    target="_blank"
-                                   class="px-2.5 py-1 bg-green-700 hover:bg-red-600 rounded text-xs transition">
-                                    PDF
+                                   class="px-2.5 py-1 bg-green-700 hover:bg-green-600 rounded text-xs transition">
+                                     PDF
                                 </a>
                                 {% endif %}
                             </div>
@@ -290,9 +307,9 @@
             
             // Update header indicator
             document.querySelectorAll('.sortable').forEach(h => {
-                h.innerHTML = h.innerHTML.replace(/[↓↑]/g, '').trim();
+                h.innerHTML = h.innerHTML.replace(/[↑]/g, '').trim();
             });
-            header.innerHTML = header.innerHTML.trim() + (direction === 'asc' ? ' ↓' : ' ↑');
+            header.innerHTML = header.innerHTML.trim() + (direction === 'asc' ? ' ' : ' ↑');
             
             sortRows(column, direction);
         });

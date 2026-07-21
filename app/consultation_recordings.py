@@ -4,12 +4,11 @@ from pathlib import Path
 from shutil import copyfileobj
 from uuid import uuid4
 
-from flask import current_app, url_for
+from flask import current_app
 from werkzeug.utils import secure_filename
 
 from .extensions import db
 from .models import OnlineConsultation
-from .services import notify, send_email
 
 
 RECORDING_BODY_PREFIX = "file:"
@@ -47,8 +46,11 @@ def has_video_recording(consultation):
 
 
 def default_recording_expiry():
-    days = max(1, int(current_app.config.get("CONSULTATION_RECORDING_RETENTION_DAYS", 30) or 30))
-    return datetime.now() + timedelta(days=days)
+    hours = current_app.config.get("CONSULTATION_RECORDING_RETENTION_HOURS")
+    if hours is None:
+        hours = int(current_app.config.get("CONSULTATION_RECORDING_RETENTION_DAYS", 30) or 30) * 24
+    hours = max(24, int(hours or 24))
+    return datetime.now() + timedelta(hours=hours)
 
 
 def _apply_recording_metadata(consultation, filename, mime_type, size):
@@ -168,70 +170,8 @@ def delete_recording_file(consultation):
     return bool(path)
 
 
-def _recording_link(consultation):
-    base_url = (current_app.config.get("APP_BASE_URL") or "").rstrip("/")
-    try:
-        path = url_for("doctor.consultation_record", consultation_id=consultation.id)
-        return f"{base_url}{path}" if base_url else url_for(
-            "doctor.consultation_record",
-            consultation_id=consultation.id,
-            _external=True,
-        )
-    except RuntimeError:
-        path = f"/doctor/consultations/{consultation.id}/record"
-        return f"{base_url}{path}" if base_url else path
-
-
 def send_recording_expiry_warnings(now=None):
-    now = now or datetime.now()
-    warning_days = max(1, int(current_app.config.get("CONSULTATION_RECORDING_EXPIRY_WARNING_DAYS", 7) or 7))
-    cutoff = now + timedelta(days=warning_days)
-    rows = (
-        OnlineConsultation.query
-        .filter(
-            OnlineConsultation.session_record_body.isnot(None),
-            OnlineConsultation.session_record_expires_at.isnot(None),
-            OnlineConsultation.session_record_expires_at <= cutoff,
-            OnlineConsultation.session_record_expires_at > now,
-            OnlineConsultation.session_record_expiry_notified_at.is_(None),
-        )
-        .limit(50)
-        .all()
-    )
-    for consultation in rows:
-        request_number = consultation.request.request_number if consultation.request else "a consultation"
-        expires = consultation.session_record_expires_at.strftime("%Y-%m-%d %H:%M")
-        link = _recording_link(consultation)
-        body = (
-            f"The saved video for {request_number} expires on {expires}. "
-            "Extend it if it must be kept longer."
-        )
-        notify(
-            consultation.doctor_id,
-            "Consultation video expiring soon",
-            body,
-            link,
-        )
-        if consultation.doctor and consultation.doctor.email:
-            email_body = (
-                f"Hello {consultation.doctor.full_name or consultation.doctor.email},\n\n"
-                f"{body}\n\n"
-                f"Consultation ID: {consultation.id}\n"
-                f"Patient: {consultation.patient.full_name if consultation.patient else 'Patient'}\n"
-                f"Expiry date: {expires}\n"
-            )
-            if link:
-                email_body += f"\nOpen the consultation record: {link}\n"
-            email_body += "\n- NMB-HLab"
-            send_email(
-                [consultation.doctor.email],
-                "Consultation video expiring soon",
-                email_body,
-            )
-        consultation.session_record_expiry_notified_at = now
-    if rows:
-        db.session.commit()
-    return len(rows)
+    return 0
 
 
 def delete_expired_recordings(now=None):
@@ -255,5 +195,4 @@ def delete_expired_recordings(now=None):
 
 def run_recording_retention_tasks(now=None):
     deleted = delete_expired_recordings(now=now)
-    warned = send_recording_expiry_warnings(now=now)
-    return {"deleted": deleted, "warned": warned}
+    return {"deleted": deleted, "warned": 0}
