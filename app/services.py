@@ -59,15 +59,19 @@ def release_request(req: TestRequest, actor_id, note=None):
     req.status = "released"
     req.release_note = note or req.release_note
     req.released_at = datetime.now()
+    results_url = app_url("/patient/results", external=True)
+    pdf_url = app_url(f"/patient/results/{req.id}/pdf", external=True)
     if not already_released and req.patient and req.patient.profile_id:
         notify(req.patient.profile_id,
                "New test results available",
-               note or f"Results for request {req.request_number} have been released.",
+               note or f"Results for request {req.request_number} have been released. Open your attached report from Results.",
                "/patient/results")
     if not already_released and req.doctor_id and req.patient and req.patient.profile_id:
         message_body = (
-            f"Your results for request {req.request_number} have been released. "
-            "Please sign in to view your report."
+            f"Your results for request {req.request_number} have been released.\n\n"
+            "Your released report is attached below as secure portal links:\n"
+            f"View results: {results_url}\n"
+            f"Download PDF: {pdf_url}"
         )
         if note:
             message_body += f"\n\nRelease note: {note}"
@@ -78,7 +82,6 @@ def release_request(req: TestRequest, actor_id, note=None):
         ))
     if not already_released and req.patient and req.patient.email:
         pdf = build_request_results_pdf(req)
-        results_url = app_url("/patient/results", external=True)
         patient_body = (
             f"Hello {req.patient.full_name or req.patient.email},\n\n"
             f"Results for request {req.request_number} are now available in the MediLab Connect portal.\n\n"
@@ -88,6 +91,7 @@ def release_request(req: TestRequest, actor_id, note=None):
         patient_body += (
             "Please sign in to view the report. If you have questions about the results, contact your doctor or the laboratory.\n\n"
             f"Open results: {results_url}\n\n"
+            f"Download PDF after sign-in: {pdf_url}\n\n"
             ""
         )
         send_email(

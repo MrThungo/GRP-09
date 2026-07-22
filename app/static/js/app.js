@@ -869,6 +869,31 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     }[char]));
   }
 
+  function linkifyMessageBody(value) {
+    const text = String(value || "");
+    const urlPattern = /https?:\/\/[^\s<>"']+/g;
+    let html = "";
+    let lastIndex = 0;
+    for (const match of text.matchAll(urlPattern)) {
+      const url = match[0];
+      html += escapeHtml(text.slice(lastIndex, match.index));
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+          const safeUrl = escapeHtml(url);
+          html += `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="font-semibold underline decoration-sky-300/70 underline-offset-2 hover:text-sky-100">${safeUrl}</a>`;
+        } else {
+          html += escapeHtml(url);
+        }
+      } catch (_) {
+        html += escapeHtml(url);
+      }
+      lastIndex = match.index + url.length;
+    }
+    html += escapeHtml(text.slice(lastIndex));
+    return html;
+  }
+
   function contactLinks() {
     return Array.from(root.querySelectorAll("[data-chat-contact]"));
   }
@@ -934,7 +959,7 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     return `
       <div class="flex ${mine ? "justify-end" : "justify-start"}">
         <div class="max-w-[82%] rounded-lg px-3 py-2 ${bubble}">
-          <div class="whitespace-pre-wrap break-words text-sm leading-5">${escapeHtml(message.body)}</div>
+          <div class="whitespace-pre-wrap break-words text-sm leading-5">${linkifyMessageBody(message.body)}</div>
           <div class="mt-1 text-[10px] ${meta}">${escapeHtml(message.created_label)}${readState}</div>
         </div>
       </div>`;
