@@ -9,9 +9,7 @@
 {% block content %}
 <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
   <div>
-    <div class="section-kicker">Clinical workspace</div>
     <h1 class="section-title mt-2 text-3xl">Welcome back, Dr. {{ current_user.full_name or current_user.email.split('@')[0] }}</h1>
-    <p class="mt-2 text-sm text-slate-400">Review active requests, release verified results and monitor weekly workload.</p>
   </div>
 </div>
 
@@ -34,7 +32,6 @@
   <div class="flex flex-col gap-4 border-b border-slate-800 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
     <div>
       <h2 class="text-lg font-bold text-white">Recent Requests</h2>
-      <p class="text-sm text-slate-400">Latest requests created under your doctor account.</p>
     </div>
     <div class="flex flex-wrap gap-2">
       <a href="{{ url_for('doctor.requests_list') }}?date={{ today_date }}" class="btn-secondary px-3 py-2 text-xs">Today</a>

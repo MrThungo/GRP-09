@@ -12,7 +12,7 @@
     <nav class="hidden items-center gap-7 text-sm font-medium text-slate-200/90 md:flex">
       <a href="#features" class="hover:text-white">Features</a>
       <a href="#workflow" class="hover:text-white">Workflow</a>
-      <a href="#roles" class="hover:text-white">Roles</a>
+      <a href="#team" class="hover:text-white">Team</a>
       <a href="#security" class="hover:text-white">Security</a>
     </nav>
 
@@ -28,7 +28,7 @@
 </header>
 
 <section class="hero-shell">
-  <video autoplay muted loop playsinline poster="{{ url_for('static', filename='media/hero.jpg') }}">
+  <video data-hero-video autoplay muted loop playsinline webkit-playsinline preload="auto" aria-hidden="true">
     <source src="{{ url_for('static', filename='media/hero.mp4') }}" type="video/mp4">
     <source src="https://cdn.coverr.co/videos/coverr-laboratory-research-3949/1080p.mp4" type="video/mp4">
   </video>
@@ -110,28 +110,29 @@
   </div>
 </section>
 
-<section id="roles" class="bg-slate-950 py-20">
+<section id="team" class="bg-slate-950 py-20">
   <div class="mx-auto max-w-7xl px-4 sm:px-6">
     <div class="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
       <div>
-        <div class="section-kicker">System users</div>
-        <h2 class="section-title mt-3 text-3xl sm:text-4xl">A dedicated portal for every role.</h2>
-        <p class="mt-4 text-sm leading-6 text-slate-400">
-          Each user sees only the tools they need, keeping high-volume lab work focused and patient information protected.
-        </p>
+        <div class="section-kicker">Project team</div>
+        <h2 class="section-title mt-3 text-3xl sm:text-4xl">People behind the portal.</h2>
       </div>
 
-      <div class="grid gap-4 sm:grid-cols-2">
-        {% for r in [
-          ("Patient","View requests, manage medical history and download reports."),
-          ("Doctor","Create requests, monitor progress and release results."),
-          ("Lab Technician","Process samples, capture results and verify tests."),
-          ("Lab Manager","Manage inventory, suppliers, technicians and reports."),
-          ("Admin","Manage users, clinical lists, access and audit logs.")
-        ] %}
-          <div class="feature-card p-5">
-            <div class="font-bold text-white">{{ r[0] }}</div>
-            <p class="mt-2 text-sm leading-6 text-slate-400">{{ r[1] }}</p>
+      <div class="landing-team-grid">
+        {% for member in team_members %}
+          <div class="landing-team-card">
+            <div class="landing-avatar">
+              {% if member.avatar_url %}
+                <img src="{{ app_url(member.avatar_url) }}" alt="{{ member.name }}">
+              {% else %}
+                <span>{{ member.initials }}</span>
+              {% endif %}
+            </div>
+            <div>
+              <div class="landing-team-name">{{ member.name }}</div>
+              <div class="landing-team-number">{{ member.student_number }}</div>
+              <div class="landing-team-role">{{ member.role }}</div>
+            </div>
           </div>
         {% endfor %}
       </div>

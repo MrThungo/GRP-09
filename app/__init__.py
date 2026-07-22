@@ -4,7 +4,7 @@ import secrets
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from flask import Flask, redirect, url_for, request, jsonify, flash, g
+from flask import Flask, redirect, url_for, request, jsonify, flash, g, session
 from flask.cli import with_appcontext
 from flask_login import LoginManager, current_user, logout_user
 from flask_migrate import Migrate
@@ -387,7 +387,23 @@ def create_app():
     app.config["STATIC_ASSET_VERSION"] = _static_asset_version(app)
 
     # Sessions
-    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+    try:
+        idle_minutes = int(_env_value("SESSION_IDLE_TIMEOUT_MINUTES", default="20"))
+    except ValueError:
+        idle_minutes = 20
+    try:
+        idle_seconds = int(
+            _env_value(
+                "SESSION_IDLE_TIMEOUT_SECONDS",
+                default=str(max(1, idle_minutes) * 60),
+            )
+        )
+    except ValueError:
+        idle_seconds = max(1, idle_minutes) * 60
+    app.config["SESSION_IDLE_TIMEOUT_SECONDS"] = max(60, idle_seconds)
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(
+        seconds=app.config["SESSION_IDLE_TIMEOUT_SECONDS"]
+    )
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = _env_bool("SESSION_COOKIE_SECURE", False)
@@ -635,6 +651,27 @@ def create_app():
                 return redirect(url_for("auth.login"))
         if current_user.is_authenticated:
             now = datetime.now()
+            if request.endpoint != "static":
+                idle_timeout = int(app.config.get("SESSION_IDLE_TIMEOUT_SECONDS", 1200) or 1200)
+                last_activity_raw = session.get("_last_activity_at")
+                last_activity = None
+                if last_activity_raw:
+                    try:
+                        last_activity = datetime.fromisoformat(last_activity_raw)
+                    except (TypeError, ValueError):
+                        last_activity = None
+                if last_activity and (now - last_activity).total_seconds() > idle_timeout:
+                    logout_user()
+                    session.clear()
+                    if request.path.startswith("/api/") or request.path.startswith("/messages/api/"):
+                        return jsonify({
+                            "error": "session_expired",
+                            "message": "Your session expired after inactivity.",
+                        }), 401
+                    flash("Your session expired after inactivity. Please sign in again.", "info")
+                    return redirect(url_for("auth.login"))
+                if request.endpoint not in {"api.live_snapshot", "api.me", "api.list_notifications"}:
+                    session["_last_activity_at"] = now.isoformat()
             last_seen = getattr(current_user, "last_seen", None)
             interval = app.config["PRESENCE_WRITE_INTERVAL_SECONDS"]
             if not last_seen or (now - last_seen).total_seconds() >= interval:

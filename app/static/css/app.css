@@ -1086,13 +1086,20 @@ body.confirm-modal-open {
   min-height: 100vh;
   overflow: hidden;
   isolation: isolate;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(14, 165, 233, .24), transparent 28rem),
+    linear-gradient(135deg, #020617, #0f172a);
 }
 .hero-shell video,
 .hero-shell .hero-img {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
   object-fit: cover;
+  object-position: center;
   z-index: -2;
+}
+.hero-shell video {
+  display: block;
 }
 .hero-shell::before {
   content: "";
@@ -1131,6 +1138,74 @@ body.confirm-modal-open {
   border: 1px solid var(--border);
   background: var(--panel-strong);
   border-radius: .5rem;
+}
+
+.landing-team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.landing-team-card {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  border: 1px solid rgba(30, 41, 59, .92);
+  border-radius: .75rem;
+  background: rgba(15, 23, 42, .76);
+  padding: 1.1rem;
+}
+
+.landing-avatar {
+  display: grid;
+  width: clamp(5.75rem, 18vw, 8rem);
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(56, 189, 248, .28);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 32% 24%, rgba(186, 230, 253, .22), transparent 40%),
+    linear-gradient(135deg, #0f172a, #082f49);
+  color: #e0f2fe;
+  font-size: clamp(1.35rem, 5vw, 2.15rem);
+  font-weight: 900;
+}
+
+.landing-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.landing-team-name {
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.landing-team-number {
+  margin-top: .2rem;
+  color: #93c5fd;
+  font-size: .82rem;
+  font-weight: 800;
+}
+
+.landing-team-role {
+  margin-top: .45rem;
+  color: #cbd5e1;
+  font-size: .88rem;
+}
+
+@media (max-width: 640px) {
+  .landing-team-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-team-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
 }
 
 /* Tiny dropdown for the notification bell */

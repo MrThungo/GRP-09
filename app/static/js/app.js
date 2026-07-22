@@ -437,6 +437,29 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   onScroll();
 })();
 
+// --- Landing hero video mobile resume ---
+(function () {
+  const video = document.querySelector("[data-hero-video]");
+  if (!video) return;
+
+  const play = () => {
+    video.muted = true;
+    video.defaultMuted = true;
+    video.playsInline = true;
+    const promise = video.play && video.play();
+    if (promise && promise.catch) promise.catch(() => {});
+  };
+
+  play();
+  window.addEventListener("pageshow", play, { passive: true });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) play();
+  });
+  ["touchstart", "pointerdown", "click"].forEach(eventName => {
+    document.addEventListener(eventName, play, { once: true, passive: true });
+  });
+})();
+
 // --- Responsive app navigation ---
 (function () {
   const sidebar = document.querySelector("[data-app-sidebar]");

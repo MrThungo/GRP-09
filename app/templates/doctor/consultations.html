@@ -18,7 +18,6 @@
   <div>
     <p class="section-kicker">Invite-only sessions</p>
     <h1 class="mt-1 text-2xl font-black text-white">Consultations</h1>
-    <p class="mt-1 text-sm text-slate-400">Set online invites and publish in-person availability for result discussions.</p>
   </div>
   <a href="{{ url_for('doctor.requests_list') }}?status=released" class="btn-secondary px-3 py-2 text-sm">Released requests</a>
 </div>
@@ -166,7 +165,7 @@
           </div>
         {% elif c.status == 'completed' %}
           <div class="rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">
-            Online session completed. No video is saved.
+            Online session completed.
           </div>
         {% elif c.status == 'in_person_requested' %}
           <div class="rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">
