@@ -1,0 +1,45 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Landing-page team pictures{% endblock %}
+{% block content %}
+<div class="grid gap-4 md:grid-cols-2">
+  {% for member in members %}
+    <section class="rounded-lg border border-slate-800 bg-slate-950 p-5">
+      <div class="flex items-center gap-4">
+        <div class="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-full border border-slate-700 bg-slate-900 text-lg font-bold text-slate-300">
+          {% if member.picture_filename %}
+            <img src="{{ url_for('static', filename='avatars/' ~ member.picture_filename) }}"
+                 alt="{{ member.name }}"
+                 class="h-full w-full object-cover">
+          {% else %}
+            <span>{{ member.initials }}</span>
+          {% endif %}
+        </div>
+        <div class="min-w-0">
+          <h2 class="text-base font-semibold text-white">{{ member.name }}</h2>
+          <div class="text-sm text-slate-400">{{ member.student_number }}</div>
+          <div class="text-sm text-slate-500">{{ member.role }}</div>
+        </div>
+      </div>
+
+      <form method="post" enctype="multipart/form-data" class="mt-4 space-y-3">
+        <input type="hidden" name="student_number" value="{{ member.student_number }}">
+        <div>
+          <label class="text-xs font-semibold uppercase tracking-wide text-slate-400"
+                 for="picture_{{ member.student_number }}">
+            {{ 'Replace picture' if member.picture_filename else 'Upload picture' }}
+          </label>
+          <input id="picture_{{ member.student_number }}"
+                 name="picture"
+                 type="file"
+                 required
+                 accept=".png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp"
+                 class="mt-1 w-full text-sm text-slate-300">
+        </div>
+        <button type="submit" class="btn-primary px-4 py-2 text-sm">
+          Save picture
+        </button>
+      </form>
+    </section>
+  {% endfor %}
+</div>
+{% endblock %}

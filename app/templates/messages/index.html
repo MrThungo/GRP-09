@@ -7,10 +7,6 @@
      data-initial-user="{% if selected_contact %}{{ selected_contact.id }}{% endif %}"
      class="grid min-h-[72vh] overflow-hidden rounded-lg border border-slate-800 bg-slate-950 lg:grid-cols-[21rem_1fr]">
   <aside class="border-b border-slate-800 bg-slate-950 lg:border-b-0 lg:border-r">
-    <div class="border-b border-slate-800 px-4 py-4">
-      <h1 class="text-lg font-bold text-white">Messages</h1>
-    </div>
-
     <div data-chat-contacts class="max-h-[72vh] overflow-y-auto p-2">
       {% for contact in contacts %}
         {% set active = selected_contact and selected_contact.id == contact.id %}
@@ -64,7 +60,6 @@
             </span>
           </div>
         </div>
-        <div data-chat-status class="hidden text-xs text-slate-500 sm:block"></div>
       </div>
 
       <div data-chat-thread class="flex-1 space-y-3 overflow-y-auto px-4 py-5">

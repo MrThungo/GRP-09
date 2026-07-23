@@ -917,10 +917,22 @@ def capture(request_id):
     for item in eligible_items:
         item.due_at = _due_at(item)
         item.is_overdue = item.due_at < now
+    patient_history = (
+        TestRequest.query
+        .options(
+            selectinload(TestRequest.items).joinedload(TestRequestItem.test),
+            joinedload(TestRequest.doctor),
+        )
+        .filter(TestRequest.patient_id == req.patient_id, TestRequest.id != req.id)
+        .order_by(TestRequest.created_at.desc())
+        .limit(5)
+        .all()
+    )
     return render_template(
         "technician/capture.html",
         req=req,
         eligible_items=eligible_items,
+        patient_history=patient_history,
     )
 
 

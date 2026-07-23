@@ -3,11 +3,26 @@
 {% block page_title %}Process {{ req.request_number }}{% endblock %}
 {% block content %}
 <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 mb-4 text-sm">
-  <div class="text-xs uppercase text-slate-400 mb-1">Patient context</div>
+  <div class="text-xs uppercase text-slate-400 mb-1">Patient Info</div>
   <div>
     <span class="text-slate-400">Name:</span> {{ req.patient.full_name }}
     <span class="text-slate-400 ml-3">MRN:</span> {{ req.patient.mrn }}
     <span class="text-slate-400 ml-3">Priority:</span> {{ req.priority|upper }}
+  </div>
+  <div class="mt-1">
+    <span class="text-slate-400">Requesting doctor:</span>
+    {{ req.doctor.full_name if req.doctor else '-' }}
+    {% if req.doctor and req.doctor.email %}
+      <span class="text-slate-500">({{ req.doctor.email }})</span>
+    {% endif %}
+  </div>
+  <div class="mt-1">
+    <span class="text-slate-400">Patient details:</span>
+    ID {{ req.patient.id_number or '-' }}
+    <span class="text-slate-500">|</span>
+    DOB {{ req.patient.date_of_birth.strftime('%Y-%m-%d') if req.patient.date_of_birth else '-' }}
+    <span class="text-slate-500">|</span>
+    Blood {{ req.patient.blood_type or '-' }}
   </div>
   {% if req.clinical_notes %}<div class="mt-1"><span class="text-slate-400">Doctor notes:</span> {{ req.clinical_notes }}</div>{% endif %}
   {% if req.patient.chronic_conditions %}<div class="mt-1"><span class="text-amber-300">Conditions:</span> {{ req.patient.chronic_conditions }}</div>{% endif %}
@@ -16,6 +31,30 @@
   {% if req.patient.allergy_list %}<div class="mt-1"><span class="text-rose-300">Allergy catalogue:</span> {{ req.patient.allergy_list|map(attribute='name')|join(', ') }}</div>{% endif %}
   {% if req.patient.current_medication %}<div class="mt-1"><span class="text-sky-300">Medication:</span> {{ req.patient.current_medication }}</div>{% endif %}
   {% if req.patient.medications %}<div class="mt-1"><span class="text-sky-300">Medication catalogue:</span> {{ req.patient.medications|map(attribute='name')|join(', ') }}</div>{% endif %}
+  <details class="mt-3 rounded border border-slate-800 bg-slate-900/50 p-3">
+    <summary class="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-300">Patient history</summary>
+    <div class="mt-3 space-y-2">
+      {% for history_req in patient_history %}
+      <div class="rounded border border-slate-800 bg-slate-950/80 p-2">
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <span class="font-mono text-xs text-sky-300">{{ history_req.request_number }}</span>
+          <span class="text-xs text-slate-500">
+            {{ history_req.status.replace('_', ' ')|title }} - {{ history_req.created_at.strftime('%Y-%m-%d') }}
+          </span>
+        </div>
+        <div class="mt-1 text-xs text-slate-400">
+          {% for history_item in history_req.items %}
+            {{ history_item.test.code }}: {{ history_item.status.replace('_', ' ')|title }}{% if history_item.abnormal_flag %} ({{ history_item.abnormal_flag|upper }}){% endif %}{% if not loop.last %}, {% endif %}
+          {% else %}
+            No test items.
+          {% endfor %}
+        </div>
+      </div>
+      {% else %}
+      <div class="text-xs text-slate-500">No previous requests found.</div>
+      {% endfor %}
+    </div>
+  </details>
 </div>
 
 <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 mb-4">
@@ -100,6 +139,30 @@
         <div class="text-xs text-slate-400 mt-1">
           {{ it.test.category }} | {{ it.test.sample_type or 'No sample type' }} |
           {{ it.test.units or 'No units' }} | Status: {{ it.status.replace('_', ' ')|title }}
+        </div>
+        <div class="mt-2 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+          <div class="rounded border border-slate-800 bg-slate-900/60 px-3 py-2">
+            <span class="font-semibold text-slate-300">Reference range:</span>
+            {% if it.test.reference_low is not none and it.test.reference_high is not none %}
+              {{ it.test.reference_low }} - {{ it.test.reference_high }} {{ it.test.units or '' }}
+            {% elif it.test.reference_text %}
+              {{ it.test.reference_text }}
+            {% else %}
+              -
+            {% endif %}
+          </div>
+          <div class="rounded border border-slate-800 bg-slate-900/60 px-3 py-2">
+            <span class="font-semibold text-slate-300">Consumables remaining:</span>
+            {% if it.test.test_consumables %}
+              {% for tc in it.test.test_consumables %}
+                {% if tc.consumable %}
+                  {{ tc.consumable.name }}: {{ tc.consumable.current_stock }} {{ tc.consumable.unit or 'unit' }}{% if tc.quantity_required %} (needs {{ tc.quantity_required }}){% endif %}{% if not loop.last %}; {% endif %}
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              None assigned
+            {% endif %}
+          </div>
         </div>
         {% if it.started_at %}
         <div class="text-xs mt-1 {% if it.is_overdue %}text-red-400{% else %}text-emerald-400{% endif %}">

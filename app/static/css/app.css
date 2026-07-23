@@ -435,6 +435,13 @@ a:hover .stat-card,
   letter-spacing: 0;
 }
 
+.body-copy {
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 11.5rem), 1fr));
@@ -528,11 +535,13 @@ a:hover .stat-card,
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable;
   overscroll-behavior-inline: contain;
+  padding-bottom: .2rem;
 }
 
 .responsive-table > table {
   width: max-content;
   min-width: 100%;
+  max-width: none;
 }
 
 .responsive-table:focus-visible {
@@ -581,6 +590,17 @@ main table th {
   padding-right: 1rem;
   padding-top: .78rem;
   padding-bottom: .78rem;
+  vertical-align: top;
+}
+
+main table th {
+  white-space: normal;
+}
+
+main table td {
+  max-width: min(32rem, 72vw);
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 main table tbody tr {

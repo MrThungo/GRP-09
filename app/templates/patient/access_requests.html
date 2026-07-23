@@ -81,12 +81,30 @@
           <td class="py-2">Dr. {{ ar.doctor.full_name or ar.doctor.email }}</td>
           <td class="capitalize">{{ ar.status }}</td>
           <td class="text-xs text-slate-400">{{ ar.responded_at.strftime('%Y-%m-%d %H:%M') if ar.responded_at }}</td>
-          <td class="text-right">
+          <td class="py-2 text-right">
             {% if ar.status == 'accepted' and ar.grant_id and ar.grant and ar.grant.is_active %}
-              <form method="post" action="{{ url_for('patient.consent_revoke', grant_id=ar.grant_id) }}"
-                    data-confirm-message="Revoke access for this doctor?">
-                <button class="px-3 py-1 bg-rose-700 hover:bg-rose-600 rounded text-xs">Revoke access</button>
-              </form>
+              <div class="flex flex-col items-end gap-2">
+                <form method="post" action="{{ url_for('patient.consent_revoke', grant_id=ar.grant_id) }}"
+                      data-confirm-message="Revoke all access for this doctor?">
+                  <button type="submit" class="rounded bg-rose-700 px-3 py-1 text-xs hover:bg-rose-600">Revoke all</button>
+                </form>
+                <details class="max-w-xs text-left text-xs text-slate-400">
+                  <summary class="cursor-pointer text-sky-300">Revoke one test</summary>
+                  <div class="mt-2 space-y-1 rounded border border-slate-800 bg-slate-950 p-2">
+                    {% for item in ar.grant.request_items %}
+                      <form method="post"
+                            action="{{ url_for('patient.consent_revoke_item', grant_id=ar.grant_id, item_id=item.id) }}"
+                            data-confirm-message="Revoke this test result for this doctor?"
+                            class="flex items-center justify-between gap-2">
+                        <span class="min-w-0 truncate">{{ item.test.code if item.test else '-' }} - {{ item.test.name if item.test else 'Test result' }}</span>
+                        <button type="submit" class="shrink-0 text-rose-300 hover:text-rose-100">Revoke</button>
+                      </form>
+                    {% else %}
+                      <span class="text-slate-500">No individual tests remain shared.</span>
+                    {% endfor %}
+                  </div>
+                </details>
+              </div>
             {% elif ar.status == 'accepted' %}
               <span class="text-xs text-slate-500">Revoked</span>
             {% endif %}

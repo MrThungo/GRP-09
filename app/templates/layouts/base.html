@@ -71,7 +71,7 @@
 
 {% if current_user.is_authenticated and not current_user.is_pending %}
 {% set role = current_user.primary_role %}
-{% set role_label = (role or 'workspace').replace('_', ' ')|title %}
+{% set role_label = 'Super Administrator' if current_user.has_role('super_admin') else (role or 'workspace').replace('_', ' ')|title %}
 {% set flashed_messages = get_flashed_messages(with_categories=true) %}
 
 <div class="app-shell min-h-screen lg:flex">
@@ -141,6 +141,10 @@
           {% elif role == 'admin' %}
             {{ nav_link(url_for('admin.dashboard'), 'Dashboard', ['admin.dashboard']) }}
             {{ nav_link(url_for('admin.users'), 'Users & roles', ['admin.users', 'admin.user_detail']) }}
+            {% if current_user.has_role('super_admin') %}
+              {{ nav_link(url_for('admin.password_access_requests'), 'Password approvals', ['admin.password_access_requests']) }}
+              {{ nav_link(url_for('admin.landing_team_pictures'), 'Landing pictures', ['admin.landing_team_pictures']) }}
+            {% endif %}
             {{ nav_link(url_for('admin.online_users'), 'Online users', ['admin.online_users']) }}
             {{ nav_link(url_for('admin.patients'), 'Patients', ['admin.patients']) }}
             {{ nav_link(url_for('admin.tests'), 'Test catalog', ['admin.tests']) }}

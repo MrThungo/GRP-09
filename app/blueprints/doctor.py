@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from flask import Blueprint, render_template, redirect, url_for, request, flash, abort, send_file, jsonify, current_app, Response
 from flask_login import login_required, current_user
 from sqlalchemy import func, or_
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 from werkzeug.utils import secure_filename
 
 from ..consultation_recordings import delete_recording_file
@@ -50,6 +50,23 @@ def _ready_to_release_query(query):
         TestRequest.items.any(TestRequestItem.status != "cancelled"),
         ~TestRequest.items.any(TestRequestItem.status.notin_(("verified", "cancelled"))),
     )
+
+
+def _unique_sample_barcode(request_number, sample_index, sample_type):
+    for _ in range(12):
+        barcode = Sample.generate_barcode(request_number, sample_index, sample_type)
+        if not Sample.query.filter_by(barcode=barcode).first():
+            return barcode
+    while True:
+        barcode = Sample.generate_simple_barcode()
+        if not Sample.query.filter_by(barcode=barcode).first():
+            return barcode
+
+
+def _reference_label(test):
+    if test.reference_low is not None and test.reference_high is not None:
+        return f"{test.reference_low} - {test.reference_high} {test.units or ''}".strip()
+    return test.reference_text or "-"
 
 
 @bp.before_request
@@ -223,6 +240,129 @@ def patient_search():
     })
 
 
+@bp.get("/patients/<patient_id>/history")
+def patient_history(patient_id):
+    patient = (
+        Patient.query
+        .options(
+            selectinload(Patient.conditions),
+            selectinload(Patient.allergy_list),
+            selectinload(Patient.medications),
+        )
+        .filter(Patient.id == patient_id, Patient.deleted_at.is_(None))
+        .first()
+    )
+    if not patient:
+        abort(404)
+
+    grants = (
+        ConsentGrant.query
+        .options(
+            selectinload(ConsentGrant.requests),
+            selectinload(ConsentGrant.request_items),
+        )
+        .filter_by(
+            doctor_id=current_user.id,
+            patient_id=patient.id,
+            revoked_at=None,
+        )
+        .all()
+    )
+    shared_request_ids = {
+        shared_request.id
+        for grant in grants
+        for shared_request in grant.requests
+    }
+    shared_request_ids.update(
+        item.request_id
+        for grant in grants
+        for item in grant.request_items
+    )
+
+    requests = (
+        TestRequest.query
+        .options(
+            selectinload(TestRequest.items).joinedload(TestRequestItem.test),
+            selectinload(TestRequest.samples),
+            joinedload(TestRequest.doctor),
+        )
+        .filter(
+            TestRequest.patient_id == patient.id,
+            or_(
+                TestRequest.doctor_id == current_user.id,
+                TestRequest.id.in_(shared_request_ids),
+            ),
+        )
+        .order_by(TestRequest.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    visible_requests = []
+    for req in requests:
+        if req.doctor_id == current_user.id:
+            visible_items = list(req.items)
+        else:
+            request_grants = [
+                grant for grant in grants
+                if (
+                    any(shared.id == req.id for shared in grant.requests)
+                    or any(item.request_id == req.id for item in grant.request_items)
+                )
+            ]
+            visible_items = _shared_items_for_request(req, request_grants)
+        if visible_items:
+            visible_requests.append((req, visible_items))
+
+    return jsonify({
+        "patient": {
+            "full_name": patient.full_name,
+            "mrn": patient.mrn,
+            "id_number": patient.id_number or "",
+            "date_of_birth": patient.date_of_birth.isoformat() if patient.date_of_birth else "",
+            "blood_type": patient.blood_type or "",
+            "phone": patient.phone or "",
+            "email": patient.email or "",
+            "chronic_conditions": patient.chronic_conditions or "",
+            "conditions": [condition.name for condition in patient.conditions],
+            "allergies": [allergy.name for allergy in patient.allergy_list],
+            "allergy_notes": patient.allergies or "",
+            "medications": [medication.name for medication in patient.medications],
+            "medication_notes": patient.current_medication or "",
+        },
+        "requests": [
+            {
+                "request_number": req.request_number,
+                "status": req.status,
+                "priority": req.priority,
+                "created_at": req.created_at.strftime("%Y-%m-%d %H:%M"),
+                "released_at": req.released_at.strftime("%Y-%m-%d %H:%M") if req.released_at else "",
+                "doctor": req.doctor.full_name if req.doctor else "",
+                "samples": [
+                    {
+                        "barcode": sample.barcode,
+                        "sample_type": sample.sample_type,
+                        "status": sample.status,
+                    }
+                    for sample in req.samples
+                ],
+                "items": [
+                    {
+                        "code": item.test.code if item.test else "",
+                        "name": item.test.name if item.test else "Unknown test",
+                        "status": item.status,
+                        "result": str(item.result_value) if item.result_value is not None else (item.result_text or ""),
+                        "units": item.test.units if item.test else "",
+                        "flag": item.abnormal_flag or "",
+                        "reference": _reference_label(item.test) if item.test else "-",
+                    }
+                    for item in visible_items
+                ],
+            }
+            for req, visible_items in visible_requests
+        ],
+    })
+
+
 @bp.route("/requests")
 def requests_list():
     query = TestRequest.query.filter_by(doctor_id=current_user.id)
@@ -257,15 +397,15 @@ def request_new():
         patient_id = request.form.get("patient_id")
         priority = (request.form.get("priority") or "routine")
         clinical_notes = (request.form.get("clinical_notes") or "")
-        test_ids = request.form.getlist("test_ids")
+        test_ids = list(dict.fromkeys(request.form.getlist("test_ids")))
         barcodes = request.form.getlist("barcode")
         sample_types = request.form.getlist("sample_type")
-        
-        samples = [
-            (barcode.strip(), sample_type.strip())
-            for barcode, sample_type in zip(barcodes, sample_types)
-            if barcode.strip() and sample_type.strip()
-        ]
+        samples = []
+        for index, sample_type in enumerate(sample_types):
+            sample_type = (sample_type or "").strip()
+            barcode = (barcodes[index] if index < len(barcodes) else "").strip()
+            if sample_type:
+                samples.append({"barcode": barcode, "sample_type": sample_type})
 
         if not patient_id:
             flash("Patient is required.", "error")
@@ -276,12 +416,35 @@ def request_new():
         if not test_ids:
             flash("At least one test type is required.", "error")
             return redirect(url_for("doctor.request_new"))
+        selected_tests = (
+            TestCatalog.query
+            .filter(TestCatalog.id.in_(test_ids), TestCatalog.active.is_(True), TestCatalog.deleted_at.is_(None))
+            .all()
+        )
+        if len(selected_tests) != len(test_ids):
+            flash("One or more selected tests are no longer available.", "error")
+            return redirect(url_for("doctor.request_new"))
+        required_sample_types = []
+        for test in selected_tests:
+            sample_type = (test.sample_type or "").strip()
+            if sample_type and sample_type.casefold() not in {value.casefold() for value in required_sample_types}:
+                required_sample_types.append(sample_type)
+        posted_types = {(sample["sample_type"] or "").casefold() for sample in samples}
+        for sample_type in required_sample_types:
+            if sample_type.casefold() not in posted_types:
+                samples.append({"barcode": "", "sample_type": sample_type})
         if not samples:
             flash("At least one sample is required.", "error")
             return redirect(url_for("doctor.request_new"))
-        if len(barcodes) != len(sample_types):
-            flash("Each barcode must have a sample type.", "error")
-            return redirect(url_for("doctor.request_new"))
+        unique_samples = []
+        seen_types = set()
+        for sample in samples:
+            key = sample["sample_type"].casefold()
+            if key in seen_types:
+                continue
+            seen_types.add(key)
+            unique_samples.append(sample)
+        samples = unique_samples
 
         req = TestRequest(
             request_number=TestRequest.generate_number(),
@@ -294,15 +457,28 @@ def request_new():
         db.session.add(req)
         db.session.flush()
 
-        for tid in test_ids:
-            db.session.add(TestRequestItem(request_id=req.id, test_id=tid, status="submitted"))
+        for test in selected_tests:
+            db.session.add(TestRequestItem(request_id=req.id, test_id=test.id, status="submitted"))
 
-        for barcode, sample_type in samples:
-            existing_barcode = (Sample.query.filter_by(barcode=barcode).first())
+        seen_barcodes = set()
+        for index, sample in enumerate(samples, start=1):
+            barcode = sample["barcode"] or _unique_sample_barcode(req.request_number, index, sample["sample_type"])
+            if barcode.casefold() in seen_barcodes:
+                db.session.rollback()
+                flash(f"Barcode {barcode} is duplicated in this request.", "error")
+                return redirect(url_for("doctor.request_new"))
+            seen_barcodes.add(barcode.casefold())
+            existing_barcode = Sample.query.filter_by(barcode=barcode).first()
             if existing_barcode:
+                db.session.rollback()
                 flash(f"Barcode {barcode} already exists.", "error")
                 return redirect(url_for("doctor.request_new"))
-            db.session.add(Sample(request_id=req.id, barcode=barcode, sample_type=sample_type, status="collected"))
+            db.session.add(Sample(
+                request_id=req.id,
+                barcode=barcode,
+                sample_type=sample["sample_type"],
+                status="collected",
+            ))
 
         patient = db.session.get(Patient, patient_id)
         if patient and patient.profile_id:

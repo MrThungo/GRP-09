@@ -34,12 +34,25 @@ flask --app wsgi:app run        # http://localhost:5000
 
 Seeded account passwords are not stored in source code. For local testing, set
 `DEFAULT_USER_PASSWORD` to use one shared password, or set role-specific values
-such as `DEFAULT_ADMIN_PASSWORD`, `DEFAULT_DOCTOR_PASSWORD`,
+such as `DEFAULT_SUPER_ADMIN_PASSWORD`, `DEFAULT_ADMIN_PASSWORD`, `DEFAULT_DOCTOR_PASSWORD`,
 `DEFAULT_TECHNICIAN_PASSWORD`, `DEFAULT_MANAGER_PASSWORD` and
 `DEFAULT_PATIENT_PASSWORD`. If these are blank, the app generates temporary
 passwords during local seeding/startup and prints them to the server console.
 Set `ENABLE_QUICK_LOGIN=true` only in local/testing env files to show quick
 login buttons. Keep it `false` for the IIS production/publish environment.
+
+### Dual-control temporary password access
+
+Administrators cannot decrypt existing password hashes. From **Admin → Users**,
+an administrator can instead request access to a newly generated temporary
+password. A different super administrator must re-authenticate and approve the
+request before the requesting administrator can reveal it. The user is then
+forced to choose a different password at the next login.
+
+Set `SUPER_ADMIN_EMAIL` to the bootstrap administrator account. The configured
+account receives the `super_admin` role at application startup; the default is
+`superadmin@nmbhlab.com`. The normal seeded administrator remains
+`admin@nmbhlab.com` and does not receive the `super_admin` role.
 
 ## Background media on the landing page
 

@@ -39,7 +39,7 @@
       <h1 class="mt-4 max-w-5xl text-4xl font-black leading-tight tracking-tight text-white sm:text-5xl lg:text-6xl">
         Secure test requests, verified results, and lab operations in one portal.
       </h1>
-      <p class="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+      <p class="body-copy mt-5 max-w-2xl text-base font-normal leading-7 text-slate-300 sm:text-lg">
         {{ app_name }} connects doctors, technicians, managers, administrators and patients across the full haematology workflow, from request creation to released PDF reports.
       </p>
 
@@ -116,6 +116,12 @@
       <div>
         <div class="section-kicker">Project team</div>
         <h2 class="section-title mt-3 text-3xl sm:text-4xl">People behind the portal.</h2>
+        {% if current_user.is_authenticated and current_user.has_role('super_admin') %}
+          <a href="{{ url_for('admin.landing_team_pictures') }}"
+             class="btn-secondary mt-4 px-4 py-2 text-sm">
+            Manage team pictures
+          </a>
+        {% endif %}
       </div>
 
       <div class="landing-team-grid">

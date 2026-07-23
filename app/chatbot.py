@@ -56,6 +56,8 @@ class ChatbotReply:
 
 BLOOD_TYPES = ("A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-")
 PROFILE_FIELD_ALIASES = {
+    "full_name": ("first name", "full name", "name"),
+    "surname": ("surname", "last name"),
     "title": ("title", "salutation"),
     "phone": ("phone", "cellphone", "cell phone", "mobile", "mobile number", "contact number"),
     "id_number": ("id number", "sa id", "south african id", "identity number"),
@@ -652,36 +654,28 @@ def _admin_unblock_user_reply(actor, target):
 
 
 def _admin_reset_password_reply(actor, target):
-    new_password = secrets.token_urlsafe(10) + "A1!"
-    target.set_password(new_password)
-    target.must_change_password = True
-    target.temp_password = new_password
-    log_audit(actor.id, "reset_password", "user", target.id)
-    db.session.commit()
-    sent = send_portal_email(
-        [target.email],
-        "Your MediLab Connect temporary password",
-        (
-            f"Hello {target.full_name or target.email},\n\n"
-            "Your MediLab Connect password has been reset by an administrator.\n\n"
-            f"Temporary password: {new_password}\n\n"
-            "For security, you will be asked to choose a new password the next time you sign in.\n\n"
-            "- MediLab Connect"
+    return ChatbotReply(
+        body=(
+            "Direct administrator password resets are disabled. Open the user record "
+            "and submit a dual-control password access request for super administrator approval."
         ),
+        links=_admin_users_link(actor),
     )
-    if sent:
-        body = f"Done. I reset the password for {target.email} and emailed the temporary password."
-    else:
-        body = (
-            f"Done. I reset the password for {target.email}, but email is not available.\n\n"
-            f"Temporary password: {new_password}"
-        )
-    return ChatbotReply(body=body, links=_admin_users_link(actor))
 
 
 def _admin_assign_role_reply(actor, target, role):
     if role not in ROLES:
         return _admin_action_help_reply()
+    if role == "super_admin":
+        return ChatbotReply(
+            body="Super administrator access cannot be assigned through chat.",
+            links=_admin_users_link(actor),
+        )
+    if target.has_role("super_admin") and not actor.has_role("super_admin"):
+        return ChatbotReply(
+            body="Only a super administrator can modify that protected account.",
+            links=_admin_users_link(actor),
+        )
     if target.id == actor.id and role != "admin":
         return ChatbotReply(
             body="I will not change your own admin role from chat because it could remove your access.",
@@ -1085,6 +1079,8 @@ def _profile_update_help_reply():
         body=(
             "Tell me which profile field to update.\n\n"
             "Examples:\n"
+            "- set first name to Nomsa\n"
+            "- set surname to Dlamini\n"
             "- set title to Ms\n"
             "- update profile phone to 0712345678\n"
             "- set ID number to 8001015009087\n"
@@ -1120,6 +1116,37 @@ def _update_profile_reply(user, patient, text):
     new_user_values = {}
     new_relations = {}
     changed = []
+
+    existing_surname = user.surname or patient.surname or None
+    existing_first_name = user.full_name or patient.full_name or ""
+    suffix = f" {existing_surname}".lower() if existing_surname else ""
+    if suffix and existing_first_name.lower().endswith(suffix):
+        existing_first_name = existing_first_name[:-len(suffix)].strip()
+
+    if "full_name" in updates or "surname" in updates:
+        first_name = (
+            _clean_profile_value(updates["full_name"])
+            if "full_name" in updates else existing_first_name
+        )
+        surname = (
+            _clean_profile_value(updates["surname"]) or None
+            if "surname" in updates else existing_surname
+        )
+        if not first_name:
+            return ChatbotReply(
+                body="First name cannot be blank.",
+                links=[_app_link("patient.profile", "Open profile")],
+            )
+        new_user_values["full_name"] = first_name
+        new_user_values["surname"] = surname
+        new_patient_values["full_name"] = " ".join(
+            part for part in (first_name, surname) if part
+        )
+        new_patient_values["surname"] = surname
+        if first_name != existing_first_name:
+            changed.append("first name")
+        if surname != existing_surname:
+            changed.append("surname")
 
     if "title" in updates:
         title, title_error = _normalize_option(updates["title"], TITLE_OPTIONS, "Title")

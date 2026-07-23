@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .extensions import db
-from .models import User
+from .models import User, UserRole
 from .DefaultUsers import create_default_users
 
 login_manager = LoginManager()
@@ -269,6 +269,31 @@ def _env_list(name, default=None):
     ]
 
 
+def _ensure_super_admin_role(app):
+    """Promote the configured bootstrap administrator exactly once."""
+    with app.app_context():
+        email = (app.config.get("SUPER_ADMIN_EMAIL") or "").strip().lower()
+        if not email:
+            return
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            app.logger.warning(
+                "SUPER_ADMIN_EMAIL is configured but no matching account exists: %s",
+                email,
+            )
+            return
+        if not user.has_role("admin"):
+            app.logger.warning(
+                "SUPER_ADMIN_EMAIL matches a non-admin account; promotion was skipped: %s",
+                email,
+            )
+            return
+        if not user.has_role("super_admin"):
+            db.session.add(UserRole(user_id=user.id, role="super_admin"))
+            db.session.commit()
+            app.logger.info("Super administrator role enabled for %s", email)
+
+
 def _static_asset_version(app):
     """Cache-bust CSS/JS when files change while allowing browser caching."""
     candidates = [
@@ -295,6 +320,10 @@ def create_app():
         )
     app.config["SECRET_KEY"] = secret_key
     app.config["APP_NAME"] = _env_value("APP_NAME", default="MediLab Connect")
+    app.config["SUPER_ADMIN_EMAIL"] = _env_value(
+        "SUPER_ADMIN_EMAIL",
+        default="superadmin@nmbhlab.com",
+    )
     app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///nmb.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["PRESENCE_WRITE_INTERVAL_SECONDS"] = int(
@@ -725,6 +754,7 @@ def create_app():
             create_default_users()
         elif _env_bool("SEED_DEFAULT_USERS", False):
             create_default_users()
+    _ensure_super_admin_role(app)
     return app
 
 

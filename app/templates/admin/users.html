@@ -6,7 +6,6 @@
 <div class="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
   <div>
     <div class="section-kicker">Access control</div>
-    <h1 class="section-title mt-2 text-3xl">Users &amp; roles</h1>
     <p class="mt-2 text-sm text-slate-400">
       Search users or actors by name, email, role, ID number, employee number or HPCSA number.
     </p>
@@ -69,7 +68,7 @@
 
 </div>
 
-<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
+<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden overflow-x-auto">
 
   <table class="w-full text-sm" data-page-size="10">
 
@@ -120,14 +119,6 @@
 
           {{ u.email }}
 
-          {% if u.temp_password and u.must_change_password %}
-            <!--
-            <div class="text-[10px] text-amber-300 font-mono">
-              temp: {{ u.temp_password }}
-            </div>
-            -->
-          {% endif %}
-
         </td>
 
         <!-- Role -->
@@ -141,7 +132,7 @@
 
           {% else %}
 
-            {{ ROLE_LABELS.get(u.primary_role, u.primary_role) }}
+            {{ ROLE_LABELS.get('super_admin' if u.has_role('super_admin') else u.primary_role, u.primary_role) }}
 
           {% endif %}
 
@@ -183,6 +174,7 @@
           <div class="flex flex-wrap gap-2 justify-end">
 
             <!-- Role -->
+            {% if not u.has_role('super_admin') %}
             <form method="post"
                   action="{{ url_for('admin.set_role', user_id=u.id) }}"
                   class="flex gap-1 items-center">
@@ -193,7 +185,7 @@
                 {% for r in ROLES %}
 
                   <option value="{{ r }}"
-                          {% if u.primary_role == r %}selected{% endif %}>
+                          {% if (r == 'super_admin' and u.has_role('super_admin')) or (r != 'super_admin' and not u.has_role('super_admin') and u.primary_role == r) %}selected{% endif %}>
 
                     {{ ROLE_LABELS[r] }}
 
@@ -208,6 +200,11 @@
               </button>
 
             </form>
+            {% else %}
+              <span class="rounded border border-violet-800 bg-violet-950/40 px-2 py-1 text-xs text-violet-200">
+                Protected
+              </span>
+            {% endif %}
 
             <!-- Activate -->
             {% if u.is_deactivated %}

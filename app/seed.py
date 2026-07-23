@@ -7,11 +7,17 @@ from .models import User, UserRole, Patient, TestCatalog, SampleType
 
 
 DEFAULT_USERS = [
-    ("admin@nmb.example.com",      "SEED_ADMIN_PASSWORD",      "Admin User",   "admin"),
-    ("manager@nmb.example.com",    "SEED_MANAGER_PASSWORD",    "Lab Manager",  "lab_manager"),
-    ("doctor@nmb.example.com",     "SEED_DOCTOR_PASSWORD",     "Dr. House",    "doctor"),
-    ("technician@nmb.example.com", "SEED_TECHNICIAN_PASSWORD", "Tech User",    "lab_technician"),
-    ("patient@nmb.example.com",    "SEED_PATIENT_PASSWORD",    "Jane Patient", "patient"),
+    (
+        "superadmin@nmb.example.com",
+        "SEED_SUPER_ADMIN_PASSWORD",
+        "Super Admin",
+        ("admin", "super_admin"),
+    ),
+    ("admin@nmb.example.com",      "SEED_ADMIN_PASSWORD",      "Admin User",   ("admin",)),
+    ("manager@nmb.example.com",    "SEED_MANAGER_PASSWORD",    "Lab Manager",  ("lab_manager",)),
+    ("doctor@nmb.example.com",     "SEED_DOCTOR_PASSWORD",     "Dr. House",    ("doctor",)),
+    ("technician@nmb.example.com", "SEED_TECHNICIAN_PASSWORD", "Tech User",    ("lab_technician",)),
+    ("patient@nmb.example.com",    "SEED_PATIENT_PASSWORD",    "Jane Patient", ("patient",)),
 ]
 
 CATALOG = [
@@ -60,7 +66,7 @@ def seed_database():
     if User.query.first():
         return
 
-    for email, env_name, name, role in DEFAULT_USERS:
+    for email, env_name, name, roles in DEFAULT_USERS:
         password, generated = _seed_password(email, env_name)
         user = User(
             email=email,
@@ -72,8 +78,9 @@ def seed_database():
             user.temp_password = password
         db.session.add(user)
         db.session.flush()
-        db.session.add(UserRole(user_id=user.id, role=role))
-        if role == "patient":
+        for role in roles:
+            db.session.add(UserRole(user_id=user.id, role=role))
+        if "patient" in roles:
             db.session.add(Patient(
                 profile_id=user.id,
                 mrn="MRN-" + user.id[:8],

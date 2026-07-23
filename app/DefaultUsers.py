@@ -6,6 +6,12 @@ from .models import User, UserRole, Patient, TestCatalog, SampleType
 
 
 DEFAULT_USER_SPECS = [
+    (
+        "superadmin@nmbhlab.com",
+        "DEFAULT_SUPER_ADMIN_PASSWORD",
+        ["admin", "super_admin"],
+        "System Super Admin",
+    ),
     ("admin@nmbhlab.com", "DEFAULT_ADMIN_PASSWORD", ["admin"], "System Admin"),
     ("doctor@nmbhlab.com", "DEFAULT_DOCTOR_PASSWORD", ["doctor"], "Group Doctor"),
     ("tech@nmbhlab.com", "DEFAULT_TECHNICIAN_PASSWORD", ["lab_technician"], "Lab Technician"),
@@ -85,13 +91,14 @@ def create_default_users():
         existing = User.query.filter_by(email=u["email"]).first()
         if not existing:
             password, generated = _seed_password(u["email"], u["env_name"])
+            temporary = generated or "super_admin" in u["roles"]
             user = User(
                 email=u["email"],
                 full_name=u["name"],
-                must_change_password=generated,
+                must_change_password=temporary,
             )
             user.set_password(password)
-            if generated:
+            if temporary:
                 user.temp_password = password
             db.session.add(user)
             db.session.flush()
@@ -102,8 +109,26 @@ def create_default_users():
                     profile_id=user.id, mrn="MRN-" + user.id[:8],
                     full_name=u["name"], email=u["email"],
                 ))
-    # Drop any legacy super_admin role rows from older databases.
-    UserRole.query.filter_by(role="super_admin").delete()
+        else:
+            existing_roles = {role.role for role in existing.user_roles}
+            for role in u["roles"]:
+                if role not in existing_roles:
+                    db.session.add(UserRole(user_id=existing.id, role=role))
+
+            # Migrate the legacy combined administrator account to a normal
+            # administrator when a separate bootstrap super administrator is
+            # configured.
+            configured_super_admin = (
+                os.environ.get("SUPER_ADMIN_EMAIL") or "superadmin@nmbhlab.com"
+            ).strip().lower()
+            if (
+                u["email"].lower() != configured_super_admin
+                and "super_admin" in existing_roles
+            ):
+                UserRole.query.filter_by(
+                    user_id=existing.id,
+                    role="super_admin",
+                ).delete(synchronize_session=False)
 
     for sample_type in DEFAULT_SAMPLE_TYPES:
         if not SampleType.query.filter_by(name=sample_type).first():

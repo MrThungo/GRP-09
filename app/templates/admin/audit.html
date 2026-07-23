@@ -1,8 +1,8 @@
 {% extends "layouts/base.html" %}
 {% block page_title %}Audit log{% endblock %}
 {% block content %}
-<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden">
-  <table class="w-full text-sm">
+<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden overflow-x-auto">
+  <table class="w-full min-w-[860px] text-sm">
     <thead class="text-left text-slate-400 text-xs uppercase">
       <tr><th class="px-4 py-2">When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Details</th></tr>
     </thead>
@@ -11,9 +11,18 @@
       <tr class="border-t border-slate-800">
         <td class="px-4 py-2 text-xs">{{ l.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
         <td class="font-mono text-[10px] text-slate-400">{{ (l.actor_id or '-')[:8] }}</td>
-        <td>{{ l.action }}</td>
-        <td class="text-slate-400 text-xs">{{ l.entity_type }} {{ (l.entity_id or '')[:12] }}</td>
-        <td class="text-slate-500 text-[11px] font-mono">{{ l.details or '' }}</td>
+        <td>{{ l.action.replace('_', ' ')|title }}</td>
+        <td class="text-slate-400 text-xs">{{ (l.entity_type or '').replace('_', ' ')|title }} {{ (l.entity_id or '')[:12] }}</td>
+        <td class="min-w-64 max-w-xl text-xs text-slate-400">
+          {% for detail in l.display_details %}
+            <div class="py-0.5">
+              <span class="font-semibold text-slate-300">{{ detail.label }}:</span>
+              <span>{{ detail.value }}</span>
+            </div>
+          {% else %}
+            <span class="text-slate-600">-</span>
+          {% endfor %}
+        </td>
       </tr>
     {% else %}
       <tr><td colspan="5" class="px-4 py-6 text-slate-500">No log entries.</td></tr>

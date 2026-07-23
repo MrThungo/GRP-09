@@ -24,7 +24,13 @@ QUICK_LOGIN_ACCOUNTS = [
     {"key": "doctor", "label": "Doctor", "email": "doctor@nmbhlab.com", "wide": False},
     {"key": "technician", "label": "Lab Technician", "email": "tech@nmbhlab.com", "wide": False},
     {"key": "manager", "label": "Lab Manager", "email": "manager@nmbhlab.com", "wide": False},
-    {"key": "admin", "label": "Admin", "email": "admin@nmbhlab.com", "wide": True},
+    {"key": "admin", "label": "Admin", "email": "admin@nmbhlab.com", "wide": False},
+    {
+        "key": "super_admin",
+        "label": "Super Admin",
+        "email": "superadmin@nmbhlab.com",
+        "wide": False,
+    },
 ]
 
 
@@ -165,7 +171,7 @@ def signup():
         # change it on first login via the global overlay in base.html.
         generated_password = secrets.token_urlsafe(9)
         user = User(
-            email=email, full_name=full_name, phone=cellphone,
+            email=email, full_name=first_name, surname=surname, phone=cellphone,
             sa_id_number=sa_id,
             must_change_password=True,
         )

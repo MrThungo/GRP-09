@@ -1,10 +1,16 @@
-"""Admin: full management of every table + block/unblock + password reveal."""
+"""Admin: full management of every table, roles and account state."""
+import hashlib
+import json
 import secrets
 import os
 import uuid
 from datetime import date, datetime, timedelta
-from flask import Blueprint, render_template, redirect, url_for, request, flash, abort, jsonify, current_app
+from flask import (
+    Blueprint, render_template, redirect, url_for, request, flash, abort,
+    jsonify, current_app, make_response,
+)
 from flask_login import login_required, current_user
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, or_
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
@@ -25,6 +31,13 @@ from .api import ONLINE_WINDOW_MINUTES, ONLINE_WINDOW_SECONDS
 
 bp = Blueprint("admin", __name__, template_folder="../templates/admin")
 ALLOWED_AVATAR_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+PASSWORD_ACCESS_REQUEST_TTL_HOURS = 24
+PASSWORD_ACCESS_APPROVAL_MINUTES = 30
+PASSWORD_ACCESS_REQUESTED = "password_access_requested"
+PASSWORD_ACCESS_APPROVED = "password_access_approved"
+PASSWORD_ACCESS_DENIED = "password_access_denied"
+PASSWORD_ACCESS_REVEALED = "password_access_revealed"
+LANDING_TEAM_PICTURE_MAX_BYTES = 5 * 1024 * 1024
 
 
 @bp.before_request
@@ -32,6 +45,214 @@ ALLOWED_AVATAR_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 @role_required("admin")
 def _gate():
     pass
+
+
+def _is_super_admin(user):
+    return bool(user and user.has_role("admin") and user.has_role("super_admin"))
+
+
+def _require_super_admin():
+    if not _is_super_admin(current_user):
+        abort(403)
+
+
+def _audit_details(entry):
+    try:
+        value = json.loads(entry.details or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _audit_detail_label(key):
+    labels = {
+        "role": "Role",
+        "roles": "Roles",
+        "doctor_id": "Doctor ID",
+        "patient_id": "Patient ID",
+        "request_id": "Request ID",
+        "request_ids": "Request IDs",
+        "item_id": "Test item ID",
+        "item_ids": "Test item IDs",
+        "user_id": "User ID",
+        "expires_at": "Expires at",
+        "must_change_password": "Password change required",
+        "student_number": "Student number",
+    }
+    return labels.get(key, str(key).replace("_", " ").strip().title())
+
+
+def _audit_detail_value(key, value):
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if key in {"role", "previous_role", "new_role"}:
+        return ROLE_LABELS.get(str(value), str(value).replace("_", " ").title())
+    if key == "roles" and isinstance(value, (list, tuple)):
+        return ", ".join(
+            ROLE_LABELS.get(str(role), str(role).replace("_", " ").title())
+            for role in value
+        )
+    if isinstance(value, dict):
+        return "; ".join(
+            f"{_audit_detail_label(child_key)}: "
+            f"{_audit_detail_value(child_key, child_value)}"
+            for child_key, child_value in value.items()
+        )
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_audit_detail_value(key.rstrip("s"), item) for item in value)
+    return str(value)
+
+
+def _audit_detail_rows(raw_details):
+    if not raw_details:
+        return []
+    try:
+        parsed = json.loads(raw_details)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return [{"label": "Details", "value": str(raw_details)}]
+    if not isinstance(parsed, dict):
+        return [{"label": "Details", "value": _audit_detail_value("details", parsed)}]
+    return [
+        {
+            "label": _audit_detail_label(key),
+            "value": _audit_detail_value(key, value),
+        }
+        for key, value in parsed.items()
+    ]
+
+
+def _password_request_decision(request_id):
+    return (
+        AuditLog.query
+        .filter(
+            AuditLog.entity_type == "password_access_request",
+            AuditLog.entity_id == request_id,
+            AuditLog.action.in_((PASSWORD_ACCESS_APPROVED, PASSWORD_ACCESS_DENIED)),
+        )
+        .order_by(AuditLog.created_at.desc())
+        .first()
+    )
+
+
+def _password_request_reveal(request_id):
+    return (
+        AuditLog.query
+        .filter_by(
+            entity_type="password_access_request",
+            entity_id=request_id,
+            action=PASSWORD_ACCESS_REVEALED,
+        )
+        .order_by(AuditLog.created_at.desc())
+        .first()
+    )
+
+
+def _password_access_state(request_entry, target=None):
+    if not request_entry:
+        return {"status": "none", "request": None}
+
+    now = datetime.now()
+    decision = _password_request_decision(request_entry.id)
+    state = {
+        "status": "pending",
+        "request": request_entry,
+        "decision": decision,
+        "expires_at": None,
+    }
+    if not decision:
+        if request_entry.created_at < now - timedelta(hours=PASSWORD_ACCESS_REQUEST_TTL_HOURS):
+            state["status"] = "expired"
+        return state
+
+    if decision.action == PASSWORD_ACCESS_DENIED:
+        state["status"] = "denied"
+        return state
+
+    decision_details = _audit_details(decision)
+    try:
+        expires_at = datetime.fromisoformat(decision_details.get("expires_at", ""))
+    except (TypeError, ValueError):
+        expires_at = decision.created_at + timedelta(minutes=PASSWORD_ACCESS_APPROVAL_MINUTES)
+    state["expires_at"] = expires_at
+    if expires_at <= now:
+        state["status"] = "expired"
+        return state
+
+    reveal = _password_request_reveal(request_entry.id)
+    state["reveal"] = reveal
+    if not reveal:
+        state["status"] = "approved"
+        return state
+
+    reveal_details = _audit_details(reveal)
+    expected_fingerprint = reveal_details.get("password_fingerprint") or ""
+    current_fingerprint = (
+        hashlib.sha256((target.temp_password or "").encode("utf-8")).hexdigest()
+        if target and target.temp_password else ""
+    )
+    if (
+        target
+        and target.must_change_password
+        and expected_fingerprint
+        and secrets.compare_digest(expected_fingerprint, current_fingerprint)
+    ):
+        state["status"] = "revealed"
+    else:
+        state["status"] = "consumed"
+    return state
+
+
+def _latest_password_request(requester_id, target_id):
+    entry = (
+        AuditLog.query
+        .filter_by(
+            actor_id=requester_id,
+            action=PASSWORD_ACCESS_REQUESTED,
+            entity_type="user",
+            entity_id=target_id,
+        )
+        .order_by(AuditLog.created_at.desc())
+        .first()
+    )
+    target = db.session.get(User, target_id)
+    return _password_access_state(entry, target)
+
+
+def _password_request_or_404(request_id):
+    entry = (
+        AuditLog.query
+        .filter_by(
+            id=request_id,
+            action=PASSWORD_ACCESS_REQUESTED,
+            entity_type="user",
+        )
+        .first()
+    )
+    if not entry:
+        abort(404)
+    return entry
+
+
+def _available_super_admin_ids(exclude_user_id=None):
+    query = (
+        db.session.query(User.id)
+        .join(UserRole, UserRole.user_id == User.id)
+        .filter(
+            UserRole.role == "super_admin",
+            User.deleted_at.is_(None),
+            User.is_blocked.is_(False),
+            User.is_deactivated.is_(False),
+        )
+    )
+    if exclude_user_id:
+        query = query.filter(User.id != exclude_user_id)
+    return [user_id for (user_id,) in query.distinct().all()]
+
+
+def _admin_role_choices():
+    return tuple(role for role in ROLES if role != "super_admin")
 
 
 def _admin_dob_from_form():
@@ -161,6 +382,88 @@ def online_users():
     )
 
 
+@bp.route("/landing-team", methods=["GET", "POST"])
+def landing_team_pictures():
+    _require_super_admin()
+    from ..landing_team import (
+        TEAM_MEMBER_SPECS,
+        landing_team_members,
+        landing_team_picture_filename,
+    )
+
+    if request.method == "POST":
+        student_number = "".join(
+            character
+            for character in (request.form.get("student_number") or "")
+            if character.isdigit()
+        )
+        member = next(
+            (
+                spec for spec in TEAM_MEMBER_SPECS
+                if spec["student_number"] == student_number
+            ),
+            None,
+        )
+        picture = request.files.get("picture")
+        if not member:
+            flash("Select a valid landing-page team member.", "error")
+            return redirect(url_for("admin.landing_team_pictures"))
+        if not picture or not picture.filename:
+            flash("Choose a picture to upload.", "error")
+            return redirect(url_for("admin.landing_team_pictures"))
+
+        picture.stream.seek(0, os.SEEK_END)
+        picture_size = picture.stream.tell()
+        picture.stream.seek(0)
+        if picture_size > LANDING_TEAM_PICTURE_MAX_BYTES:
+            flash("Landing-page pictures must be 5 MB or smaller.", "error")
+            return redirect(url_for("admin.landing_team_pictures"))
+
+        try:
+            image = Image.open(picture.stream)
+            image.verify()
+            picture.stream.seek(0)
+            image = Image.open(picture.stream)
+            image.thumbnail((1200, 1200))
+            if image.mode not in ("RGB", "L"):
+                background = Image.new("RGB", image.size, "white")
+                if "A" in image.getbands():
+                    background.paste(image, mask=image.getchannel("A"))
+                else:
+                    background.paste(image.convert("RGB"))
+                image = background
+            elif image.mode == "L":
+                image = image.convert("RGB")
+        except (UnidentifiedImageError, OSError, ValueError):
+            flash("Upload a valid PNG, JPG, GIF, or WEBP picture.", "error")
+            return redirect(url_for("admin.landing_team_pictures"))
+
+        os.makedirs(current_app.config["AVATAR_UPLOAD_DIR"], exist_ok=True)
+        filename = landing_team_picture_filename(student_number)
+        target = os.path.join(current_app.config["AVATAR_UPLOAD_DIR"], filename)
+        temporary_target = f"{target}.{uuid.uuid4().hex}.tmp"
+        try:
+            image.save(temporary_target, format="JPEG", quality=88, optimize=True)
+            os.replace(temporary_target, target)
+        finally:
+            if os.path.exists(temporary_target):
+                os.remove(temporary_target)
+
+        log_audit(
+            current_user.id,
+            "update_landing_team_picture",
+            "landing_team_member",
+            student_number,
+            {"name": member["name"], "student_number": student_number},
+        )
+        db.session.commit()
+        flash(f"Landing-page picture updated for {member['name']}.", "success")
+        return redirect(url_for("admin.landing_team_pictures"))
+
+    members = landing_team_members(current_app.config["AVATAR_UPLOAD_DIR"])
+    return render_template("admin/landing_team.html", members=members)
+
+
 # ---------- Dashboard with charts ----------
 @bp.route("/")
 def dashboard():
@@ -179,6 +482,8 @@ def dashboard():
     for u in users:
         if u.is_pending:
             role_counts["Pending"] += 1
+        elif u.has_role("super_admin"):
+            role_counts[ROLE_LABELS["super_admin"]] += 1
         else:
             role_counts[ROLE_LABELS[u.primary_role]] += 1
 
@@ -280,7 +585,7 @@ def users():
         users=rows,
         status=status,
         q=search,
-        ROLES=ROLES,
+        ROLES=_admin_role_choices(),
         ROLE_LABELS=ROLE_LABELS
     )
 
@@ -290,7 +595,22 @@ def user_detail(user_id):
     u = db.session.get(User, user_id)
     if not u:
         abort(404)
-    return render_template("admin/user_detail.html", u=u, ROLES=ROLES, ROLE_LABELS=ROLE_LABELS)
+    password_access = _latest_password_request(current_user.id, u.id)
+    can_request_password_access = bool(
+        u.id != current_user.id
+        and not u.has_role("super_admin")
+        and not u.deleted_at
+        and _available_super_admin_ids(exclude_user_id=current_user.id)
+    )
+    return render_template(
+        "admin/user_detail.html",
+        u=u,
+        ROLES=_admin_role_choices(),
+        ROLE_LABELS=ROLE_LABELS,
+        password_access=password_access,
+        can_request_password_access=can_request_password_access,
+        is_super_admin=_is_super_admin(current_user),
+    )
 
 
 @bp.route("/users/<user_id>/role", methods=["POST"])
@@ -302,6 +622,13 @@ def set_role(user_id):
     if new_role not in ROLES:
         flash("Invalid role.", "error")
         return redirect(url_for("admin.users"))
+    if new_role == "super_admin":
+        abort(403)
+    if u.has_role("super_admin") and not _is_super_admin(current_user):
+        abort(403)
+    if u.id == current_user.id:
+        flash("You cannot remove your own administrator access.", "error")
+        return redirect(request.referrer or url_for("admin.users"))
     UserRole.query.filter_by(user_id=u.id).delete()
     db.session.add(UserRole(user_id=u.id, role=new_role))
     if new_role == "patient" and not u.patient_record:
@@ -322,6 +649,11 @@ def revoke(user_id):
     u = db.session.get(User, user_id)
     if not u:
         abort(404)
+    if u.has_role("super_admin") and not _is_super_admin(current_user):
+        abort(403)
+    if u.id == current_user.id:
+        flash("You cannot revoke your own roles.", "error")
+        return redirect(request.referrer or url_for("admin.users"))
     UserRole.query.filter_by(user_id=u.id).delete()
     log_audit(current_user.id, "revoke_roles", "user", u.id)
     db.session.commit()
@@ -337,6 +669,8 @@ def block(user_id):
     if u.id == current_user.id:
         flash("You cannot block your own account.", "error")
         return redirect(request.referrer or url_for("admin.users"))
+    if u.has_role("super_admin") and not _is_super_admin(current_user):
+        abort(403)
     u.is_blocked = True
     log_audit(current_user.id, "block_user", "user", u.id)
     db.session.commit()
@@ -378,30 +712,266 @@ def reset_password(user_id):
     u = db.session.get(User, user_id)
     if not u:
         abort(404)
-    new_pw = secrets.token_urlsafe(10) + "A1!"
-    u.set_password(new_pw)
-    u.must_change_password = True
-    u.temp_password = new_pw
-    log_audit(current_user.id, "reset_password", "user", u.id)
-    db.session.commit()
-    sent = send_email(
-        [u.email],
-        "Your MediLab Connect temporary password",
-        (
-            f"Hello {u.full_name or u.email},\n\n"
-            "Your MediLab Connect password has been reset by an administrator.\n\n"
-            f"Temporary password: {new_pw}\n\n"
-            "For security, you will be asked to choose a new password the next time you sign in.\n\n"
-            "- MediLab Connect"
-        ),
-    )
     flash(
-        "Temporary password e-mailed."
-        if sent else
-        f"SMTP is unavailable; temporary password: {new_pw}",
-        "success" if sent else "error",
+        "Direct password resets are disabled. Use the dual-control password access request.",
+        "error",
     )
-    return redirect(request.referrer or url_for("admin.user_detail", user_id=u.id))
+    return redirect(url_for("admin.user_detail", user_id=u.id))
+
+
+@bp.route("/users/<user_id>/password-access/request", methods=["POST"])
+def request_password_access(user_id):
+    target = db.session.get(User, user_id)
+    if not target or target.deleted_at:
+        abort(404)
+    if target.id == current_user.id:
+        flash("You cannot request access to your own password.", "error")
+        return redirect(url_for("admin.user_detail", user_id=target.id))
+    if target.has_role("super_admin"):
+        flash("Super administrator passwords cannot be reset through this workflow.", "error")
+        return redirect(url_for("admin.user_detail", user_id=target.id))
+    if not current_user.check_password(request.form.get("current_password") or ""):
+        flash("Your administrator password is incorrect.", "error")
+        return redirect(url_for("admin.user_detail", user_id=target.id))
+
+    approver_ids = _available_super_admin_ids(exclude_user_id=current_user.id)
+    if not approver_ids:
+        flash("A different active super administrator is required to approve this request.", "error")
+        return redirect(url_for("admin.user_detail", user_id=target.id))
+
+    existing_state = _latest_password_request(current_user.id, target.id)
+    if existing_state["status"] in {"pending", "approved", "revealed"}:
+        flash("You already have an active password access request for this user.", "error")
+        return redirect(url_for("admin.user_detail", user_id=target.id))
+
+    entry = AuditLog(
+        actor_id=current_user.id,
+        action=PASSWORD_ACCESS_REQUESTED,
+        entity_type="user",
+        entity_id=target.id,
+        details=json.dumps({
+            "requested_by": current_user.id,
+            "target_user_id": target.id,
+            "expires_after_hours": PASSWORD_ACCESS_REQUEST_TTL_HOURS,
+        }),
+    )
+    db.session.add(entry)
+    db.session.flush()
+    for approver_id in approver_ids:
+        notify(
+            approver_id,
+            "Password access approval required",
+            (
+                f"{current_user.full_name or current_user.email} requested a temporary "
+                f"password for {target.full_name or target.email}."
+            ),
+            url_for("admin.password_access_requests"),
+        )
+    db.session.commit()
+    flash("Password access request sent to a super administrator.", "success")
+    return redirect(url_for("admin.user_detail", user_id=target.id))
+
+
+@bp.route("/password-access")
+def password_access_requests():
+    _require_super_admin()
+    request_entries = (
+        AuditLog.query
+        .filter_by(action=PASSWORD_ACCESS_REQUESTED, entity_type="user")
+        .order_by(AuditLog.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    user_ids = {
+        user_id
+        for entry in request_entries
+        for user_id in (entry.actor_id, entry.entity_id)
+        if user_id
+    }
+    users_by_id = {
+        user.id: user
+        for user in User.query.filter(User.id.in_(user_ids)).all()
+    } if user_ids else {}
+    rows = []
+    for entry in request_entries:
+        target = users_by_id.get(entry.entity_id)
+        rows.append({
+            "request": entry,
+            "requester": users_by_id.get(entry.actor_id),
+            "target": target,
+            "state": _password_access_state(entry, target),
+        })
+    return render_template(
+        "admin/password_access_requests.html",
+        pending_rows=[row for row in rows if row["state"]["status"] == "pending"],
+        history_rows=[row for row in rows if row["state"]["status"] != "pending"],
+        approval_minutes=PASSWORD_ACCESS_APPROVAL_MINUTES,
+    )
+
+
+@bp.route("/password-access/<request_id>/approve", methods=["POST"])
+def approve_password_access(request_id):
+    _require_super_admin()
+    entry = _password_request_or_404(request_id)
+    if entry.actor_id == current_user.id:
+        flash("The requesting administrator cannot approve their own request.", "error")
+        return redirect(url_for("admin.password_access_requests"))
+    if not current_user.check_password(request.form.get("current_password") or ""):
+        flash("Your super administrator password is incorrect.", "error")
+        return redirect(url_for("admin.password_access_requests"))
+    if _password_request_decision(entry.id):
+        flash("This request has already been decided.", "error")
+        return redirect(url_for("admin.password_access_requests"))
+    if _password_access_state(entry)["status"] != "pending":
+        flash("This request has expired and can no longer be approved.", "error")
+        return redirect(url_for("admin.password_access_requests"))
+
+    requester = db.session.get(User, entry.actor_id)
+    target = db.session.get(User, entry.entity_id)
+    if not requester or not requester.has_role("admin") or not target or target.deleted_at:
+        flash("The requester or target account is no longer available.", "error")
+        return redirect(url_for("admin.password_access_requests"))
+    if target.has_role("super_admin"):
+        flash("Super administrator passwords cannot be reset through this workflow.", "error")
+        return redirect(url_for("admin.password_access_requests"))
+
+    expires_at = datetime.now() + timedelta(minutes=PASSWORD_ACCESS_APPROVAL_MINUTES)
+    db.session.add(AuditLog(
+        actor_id=current_user.id,
+        action=PASSWORD_ACCESS_APPROVED,
+        entity_type="password_access_request",
+        entity_id=entry.id,
+        details=json.dumps({
+            "requested_by": requester.id,
+            "target_user_id": target.id,
+            "approved_by": current_user.id,
+            "expires_at": expires_at.isoformat(),
+        }),
+    ))
+    notify(
+        requester.id,
+        "Password access request approved",
+        (
+            f"Your request for {target.full_name or target.email} was approved. "
+            f"Reveal it within {PASSWORD_ACCESS_APPROVAL_MINUTES} minutes."
+        ),
+        url_for("admin.user_detail", user_id=target.id),
+    )
+    db.session.commit()
+    flash("Password access approved.", "success")
+    return redirect(url_for("admin.password_access_requests"))
+
+
+@bp.route("/password-access/<request_id>/deny", methods=["POST"])
+def deny_password_access(request_id):
+    _require_super_admin()
+    entry = _password_request_or_404(request_id)
+    if entry.actor_id == current_user.id:
+        flash("The requesting administrator cannot decide their own request.", "error")
+        return redirect(url_for("admin.password_access_requests"))
+    if not current_user.check_password(request.form.get("current_password") or ""):
+        flash("Your super administrator password is incorrect.", "error")
+        return redirect(url_for("admin.password_access_requests"))
+    if _password_request_decision(entry.id):
+        flash("This request has already been decided.", "error")
+        return redirect(url_for("admin.password_access_requests"))
+
+    requester = db.session.get(User, entry.actor_id)
+    target = db.session.get(User, entry.entity_id)
+    db.session.add(AuditLog(
+        actor_id=current_user.id,
+        action=PASSWORD_ACCESS_DENIED,
+        entity_type="password_access_request",
+        entity_id=entry.id,
+        details=json.dumps({
+            "requested_by": entry.actor_id,
+            "target_user_id": entry.entity_id,
+            "denied_by": current_user.id,
+        }),
+    ))
+    if requester:
+        notify(
+            requester.id,
+            "Password access request denied",
+            f"Your request for {(target.full_name or target.email) if target else 'the selected user'} was denied.",
+            url_for("admin.users"),
+        )
+    db.session.commit()
+    flash("Password access denied.", "success")
+    return redirect(url_for("admin.password_access_requests"))
+
+
+@bp.route("/password-access/<request_id>/reveal", methods=["POST"])
+def reveal_password_access(request_id):
+    entry = _password_request_or_404(request_id)
+    if entry.actor_id != current_user.id:
+        abort(404)
+    target = db.session.get(User, entry.entity_id)
+    if not target or target.deleted_at:
+        abort(404)
+    if target.has_role("super_admin"):
+        abort(403)
+    if not current_user.check_password(request.form.get("current_password") or ""):
+        flash("Your administrator password is incorrect.", "error")
+        return redirect(url_for("admin.user_detail", user_id=target.id))
+
+    state = _password_access_state(entry, target)
+    if state["status"] not in {"approved", "revealed"}:
+        flash("This approval is unavailable, expired, or already consumed.", "error")
+        return redirect(url_for("admin.user_detail", user_id=target.id))
+
+    if state["status"] == "revealed":
+        temporary_password = target.temp_password
+    else:
+        temporary_password = secrets.token_urlsafe(12) + "A1!"
+        target.set_password(temporary_password)
+        target.must_change_password = True
+        target.temp_password = temporary_password
+        db.session.add(AuditLog(
+            actor_id=current_user.id,
+            action=PASSWORD_ACCESS_REVEALED,
+            entity_type="password_access_request",
+            entity_id=entry.id,
+            details=json.dumps({
+                "requested_by": current_user.id,
+                "target_user_id": target.id,
+                "approved_by": state["decision"].actor_id,
+                "password_fingerprint": hashlib.sha256(
+                    temporary_password.encode("utf-8")
+                ).hexdigest(),
+            }),
+        ))
+        notify(
+            target.id,
+            "Temporary password issued",
+            (
+                "An approved administrator issued a temporary password for your account. "
+                "You must choose a new password the next time you sign in."
+            ),
+            url_for("auth.change_password"),
+        )
+        db.session.commit()
+        send_email(
+            [target.email],
+            "Your MediLab Connect password was reset",
+            (
+                f"Hello {target.full_name or target.email},\n\n"
+                "A temporary password was issued through the administrator approval workflow. "
+                "Contact your administrator securely to receive it.\n\n"
+                "You will be required to choose a new password the next time you sign in.\n\n"
+                "- MediLab Connect"
+            ),
+        )
+
+    response = make_response(render_template(
+        "admin/password_reveal.html",
+        target=target,
+        temporary_password=temporary_password,
+        expires_at=state["expires_at"],
+    ))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @bp.route("/users/<user_id>/delete", methods=["POST"])
@@ -412,6 +982,8 @@ def delete_user(user_id):
     if u.id == current_user.id:
         flash("You cannot delete your own account.", "error")
         return redirect(url_for("admin.users"))
+    if u.has_role("super_admin") and not _is_super_admin(current_user):
+        abort(403)
     email = u.email
     soft_delete(u, current_user.id)
     if u.patient_record:
@@ -496,6 +1068,8 @@ def requests_list():
 @bp.route("/audit")
 def audit():
     rows = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(500).all()
+    for row in rows:
+        row.display_details = _audit_detail_rows(row.details)
     return render_template("admin/audit.html", rows=rows)
 
 

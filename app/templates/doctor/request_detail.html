@@ -87,6 +87,41 @@
 </div>
 {% endif %}
 
+<div class="mb-4 bg-slate-950 border border-slate-800 rounded-lg p-4">
+  <div class="mb-3 flex items-center justify-between gap-3">
+    <div class="font-medium">Samples and barcodes</div>
+    <div class="text-xs text-slate-500">{{ req.samples|length }} sample{{ '' if req.samples|length == 1 else 's' }}</div>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="text-left text-xs uppercase text-slate-400">
+        <tr>
+          <th class="py-2">Barcode</th>
+          <th>Sample type</th>
+          <th>Status</th>
+          <th>Collected</th>
+          <th>Received</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sample in req.samples %}
+        <tr class="border-t border-slate-800">
+          <td class="py-2 font-mono text-sky-200">{{ sample.barcode }}</td>
+          <td>{{ sample.sample_type }}</td>
+          <td>{{ status_badge(sample.status) }}</td>
+          <td class="text-xs text-slate-400">{{ sample.collected_at.strftime('%Y-%m-%d %H:%M') if sample.collected_at else '-' }}</td>
+          <td class="text-xs text-slate-400">{{ sample.received_at.strftime('%Y-%m-%d %H:%M') if sample.received_at else '-' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="py-4 text-slate-500">No samples recorded.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <div class="space-y-4">
   <div class="bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 font-medium">Items</div>
   {% for item in items %}

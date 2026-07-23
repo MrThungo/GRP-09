@@ -849,7 +849,6 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   const thread = root.querySelector("[data-chat-thread]");
   const form = root.querySelector("[data-chat-form]");
   const input = root.querySelector("[data-chat-input]");
-  const status = root.querySelector("[data-chat-status]");
   const headerName = root.querySelector("[data-chat-header-name]");
   const headerPresence = root.querySelector("[data-chat-header-presence]");
   const headerPresenceDot = root.querySelector("[data-chat-header-presence-dot]");
@@ -901,10 +900,6 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   function findByData(name, id) {
     return Array.from(root.querySelectorAll(`[${name}]`))
       .find(item => item.getAttribute(name) === id);
-  }
-
-  function setStatus(text) {
-    if (status) status.textContent = text || "";
   }
 
   function setWindowVisible(visible) {
@@ -1015,7 +1010,6 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
       updateHeader(data.contact);
       renderMessages(data.messages || [], silent);
       updateUnreadBadge(selectedId, 0);
-      setStatus("Updated just now");
     } catch (_) {
       if (!silent && window.showFlash) window.showFlash("Messages could not be loaded.", "error");
     } finally {
@@ -1241,6 +1235,39 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     updateSummary();
     filterOptions();
   });
+})();
+
+// --- Manager technician form: filter assignable test types ---
+(function () {
+  const search = document.querySelector("[data-technician-test-filter]");
+  const list = document.querySelector("[data-technician-test-list]");
+  if (!search || !list) return;
+
+  const groups = Array.from(list.querySelectorAll("[data-technician-test-group]"));
+  const empty = list.querySelector("[data-technician-test-empty]");
+
+  function applyFilter() {
+    const query = search.value.trim().toLowerCase();
+    let visibleOptions = 0;
+
+    groups.forEach(group => {
+      let visibleInGroup = 0;
+      group.querySelectorAll("[data-technician-test-option]").forEach(option => {
+        const matches = !query || (option.dataset.search || "").toLowerCase().includes(query);
+        option.hidden = !matches;
+        if (matches) {
+          visibleInGroup += 1;
+          visibleOptions += 1;
+        }
+      });
+      group.hidden = visibleInGroup === 0;
+    });
+
+    empty?.classList.toggle("hidden", visibleOptions !== 0);
+  }
+
+  search.addEventListener("input", applyFilter);
+  applyFilter();
 })();
 
 // --- Result verification: reject only after details were viewed ---

@@ -30,7 +30,13 @@
     </div>
   </div>
   <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
-    <div class="text-xs text-slate-400">{{ requests|length }} released result request(s) found</div>
+    <div class="text-xs text-slate-400">
+      {% if result_total %}
+        Showing {{ result_start }}-{{ result_end }} of {{ result_total }} released result request(s)
+      {% else %}
+        No released result requests found
+      {% endif %}
+    </div>
     <div class="flex gap-2">
       <a href="{{ url_for('patient.results') }}" class="btn-secondary px-3 py-2 text-xs">Reset</a>
       <button class="btn-primary px-3 py-2 text-xs" type="submit">Apply filters</button>
@@ -119,4 +125,45 @@
   No released results match these filters.
 </div>
 {% endfor %}
+
+{% if result_pages > 1 %}
+  {% set page_start = [1, result_page - 2]|max %}
+  {% set page_end = [result_pages, result_page + 2]|min %}
+  <nav class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4 text-sm"
+       aria-label="My results pagination">
+    <a href="{{ url_for('patient.results', page=result_page - 1, q=filters.q, flag=filters.flag, released_from=filters.released_from, released_to=filters.released_to) }}"
+       class="rounded border border-slate-700 px-3 py-1.5 {% if result_page == 1 %}pointer-events-none opacity-40{% else %}text-slate-200 hover:border-sky-600 hover:text-white{% endif %}"
+       {% if result_page == 1 %}aria-disabled="true" tabindex="-1"{% endif %}>
+      Previous
+    </a>
+
+    <div class="flex flex-wrap justify-center gap-1">
+      {% if page_start > 1 %}
+        <a href="{{ url_for('patient.results', page=1, q=filters.q, flag=filters.flag, released_from=filters.released_from, released_to=filters.released_to) }}"
+           class="rounded bg-slate-900 px-3 py-1.5 text-slate-300 hover:bg-slate-800">1</a>
+        {% if page_start > 2 %}<span class="px-1 py-1.5 text-slate-600">...</span>{% endif %}
+      {% endif %}
+
+      {% for page_number in range(page_start, page_end + 1) %}
+        <a href="{{ url_for('patient.results', page=page_number, q=filters.q, flag=filters.flag, released_from=filters.released_from, released_to=filters.released_to) }}"
+           class="rounded px-3 py-1.5 {% if page_number == result_page %}bg-sky-600 text-white{% else %}bg-slate-900 text-slate-300 hover:bg-slate-800{% endif %}"
+           {% if page_number == result_page %}aria-current="page"{% endif %}>
+          {{ page_number }}
+        </a>
+      {% endfor %}
+
+      {% if page_end < result_pages %}
+        {% if page_end < result_pages - 1 %}<span class="px-1 py-1.5 text-slate-600">...</span>{% endif %}
+        <a href="{{ url_for('patient.results', page=result_pages, q=filters.q, flag=filters.flag, released_from=filters.released_from, released_to=filters.released_to) }}"
+           class="rounded bg-slate-900 px-3 py-1.5 text-slate-300 hover:bg-slate-800">{{ result_pages }}</a>
+      {% endif %}
+    </div>
+
+    <a href="{{ url_for('patient.results', page=result_page + 1, q=filters.q, flag=filters.flag, released_from=filters.released_from, released_to=filters.released_to) }}"
+       class="rounded border border-slate-700 px-3 py-1.5 {% if result_page == result_pages %}pointer-events-none opacity-40{% else %}text-slate-200 hover:border-sky-600 hover:text-white{% endif %}"
+       {% if result_page == result_pages %}aria-disabled="true" tabindex="-1"{% endif %}>
+      Next
+    </a>
+  </nav>
+{% endif %}
 {% endblock %}

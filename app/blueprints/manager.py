@@ -1653,7 +1653,11 @@ def delete_doctor(doctor_id):
 
 @bp.route("/technicians/new", methods=["GET", "POST"])
 def add_technician():
-    tests = _live(TestCatalog).filter_by(active=True).order_by(TestCatalog.name).all()
+    tests = _live(TestCatalog).filter_by(active=True).order_by(
+        TestCatalog.category,
+        TestCatalog.code,
+        TestCatalog.name,
+    ).all()
     if request.method == "POST":
         full_name = (request.form.get("full_name") or "").strip()
         surname = (request.form.get("surname") or "").strip()
@@ -1775,7 +1779,9 @@ def edit_technician(tech_id):
     technician = _live_or_404(User, tech_id)
 
     tests = _live(TestCatalog).filter_by(active=True).order_by(
-        TestCatalog.name
+        TestCatalog.category,
+        TestCatalog.code,
+        TestCatalog.name,
     ).all()
 
     if request.method == "POST":

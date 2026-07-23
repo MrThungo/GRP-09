@@ -42,6 +42,16 @@ def notify_admins(title, body=None, link=None):
         notify(uid, title, body, link)
 
 
+def _has_chronic_history(patient):
+    return bool(
+        patient
+        and (
+            (patient.chronic_conditions or "").strip()
+            or getattr(patient, "conditions", None)
+        )
+    )
+
+
 def apply_stock_movement(movement: StockMovement):
     cons = db.session.get(Consumable, movement.consumable_id)
     if not cons:
@@ -61,18 +71,26 @@ def release_request(req: TestRequest, actor_id, note=None):
     req.released_at = datetime.now()
     results_url = app_url("/patient/results", external=True)
     pdf_url = app_url(f"/patient/results/{req.id}/pdf", external=True)
+    chronic_release = _has_chronic_history(req.patient)
     if not already_released and req.patient and req.patient.profile_id:
         notify(req.patient.profile_id,
                "New test results available",
-               note or f"Results for request {req.request_number} have been released. Open your attached report from Results.",
+               note or f"Results for request {req.request_number} have been released. Sign in to view your results.",
                "/patient/results")
     if not already_released and req.doctor_id and req.patient and req.patient.profile_id:
-        message_body = (
-            f"Your results for request {req.request_number} have been released.\n\n"
-            "Your released report is attached below as secure portal links:\n"
-            f"View results: {results_url}\n"
-            f"Download PDF: {pdf_url}"
-        )
+        if chronic_release:
+            message_body = (
+                f"Your results for request {req.request_number} have been released.\n\n"
+                "Because chronic history is recorded on your profile, please sign in to review the results securely in the portal.\n"
+                f"Open results: {results_url}"
+            )
+        else:
+            message_body = (
+                f"Your results for request {req.request_number} have been released.\n\n"
+                "Your released report is attached below as secure portal links:\n"
+                f"View results: {results_url}\n"
+                f"Download PDF: {pdf_url}"
+            )
         if note:
             message_body += f"\n\nRelease note: {note}"
         db.session.add(ChatMessage(
@@ -81,7 +99,6 @@ def release_request(req: TestRequest, actor_id, note=None):
             body=message_body,
         ))
     if not already_released and req.patient and req.patient.email:
-        pdf = build_request_results_pdf(req)
         patient_body = (
             f"Hello {req.patient.full_name or req.patient.email},\n\n"
             f"Results for request {req.request_number} are now available in the MediLab Connect portal.\n\n"
@@ -91,14 +108,20 @@ def release_request(req: TestRequest, actor_id, note=None):
         patient_body += (
             "Please sign in to view the report. If you have questions about the results, contact your doctor or the laboratory.\n\n"
             f"Open results: {results_url}\n\n"
-            f"Download PDF after sign-in: {pdf_url}\n\n"
             ""
         )
+        attachments = []
+        if not chronic_release:
+            pdf = build_request_results_pdf(req)
+            patient_body += f"Download PDF after sign-in: {pdf_url}\n\n"
+            attachments.append((f"{req.request_number}-results.pdf", "application/pdf", pdf.getvalue()))
+        else:
+            patient_body += "No report file is attached to this email. Please use the secure portal to view chronic-care results.\n\n"
         send_email(
             [req.patient.email],
             f"MediLab Connect results released: {req.request_number}",
             patient_body,
-            [(f"{req.request_number}-results.pdf", "application/pdf", pdf.getvalue())],
+            attachments,
         )
     if not already_released and req.doctor_id:
         notify(req.doctor_id,

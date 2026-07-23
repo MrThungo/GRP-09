@@ -21,8 +21,9 @@ def _room_token():
     return uuid.uuid4().hex + uuid.uuid4().hex
 
 
-ROLES = ("admin", "lab_manager", "doctor", "lab_technician", "patient")
+ROLES = ("super_admin", "admin", "lab_manager", "doctor", "lab_technician", "patient")
 ROLE_LABELS = {
+    "super_admin": "Super Administrator",
     "admin": "Administrator",
     "lab_manager": "Lab Manager",
     "doctor": "Doctor",
@@ -183,7 +184,9 @@ class User(db.Model, UserMixin):
 
     @property
     def primary_role(self):
-        order = ["admin", "lab_manager", "doctor", "lab_technician", "patient"]
+        # Super administrators also keep the regular admin role. Keeping admin
+        # first preserves existing admin navigation and role-scoped behavior.
+        order = ["admin", "super_admin", "lab_manager", "doctor", "lab_technician", "patient"]
         for r in order:
             if r in self.roles:
                 return r

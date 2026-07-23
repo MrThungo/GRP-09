@@ -43,6 +43,18 @@ def _my_patient():
     return Patient.query.filter_by(profile_id=current_user.id, deleted_at=None).first()
 
 
+def _page_number(value, default=1):
+    try:
+        return max(1, int(value or default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _consent_redirect():
+    page = _page_number(request.form.get("return_page"))
+    return redirect(url_for("patient.consent", page=page))
+
+
 def _date_filter_value(name):
     raw = (request.args.get(name) or "").strip()
     if not raw:
@@ -166,6 +178,10 @@ def results():
     rows = []
     display_items = {}
     consultations_by_request = {}
+    result_page = _page_number(request.args.get("page"))
+    result_per_page = 10
+    result_total = 0
+    result_pages = 1
     filters = {
         "q": (request.args.get("q") or "").strip(),
         "flag": (request.args.get("flag") or "").strip().lower(),
@@ -203,10 +219,16 @@ def results():
             query = query.filter(TestRequest.released_at >= datetime.combine(released_from, time.min))
         if released_to:
             query = query.filter(TestRequest.released_at <= datetime.combine(released_to, time.max))
+        result_total = query.count()
+        result_pages = max(1, (result_total + result_per_page - 1) // result_per_page)
+        result_page = min(result_page, result_pages)
         rows = (query
                 .options(selectinload(TestRequest.items).joinedload(TestRequestItem.test))
                 .order_by(TestRequest.released_at.desc().nullslast(),
-                          TestRequest.updated_at.desc()).all())
+                          TestRequest.updated_at.desc())
+                .offset((result_page - 1) * result_per_page)
+                .limit(result_per_page)
+                .all())
 
         q_lower = filters["q"].lower()
         for result_request in rows:
@@ -231,6 +253,14 @@ def results():
         filters=filters,
         display_items=display_items,
         consultations_by_request=consultations_by_request,
+        result_page=result_page,
+        result_pages=result_pages,
+        result_total=result_total,
+        result_start=(
+            (result_page - 1) * result_per_page + 1
+            if result_total else 0
+        ),
+        result_end=min(result_page * result_per_page, result_total),
     )
 
 
@@ -571,11 +601,16 @@ def profile():
     if not p:
         abort(404)
     if request.method == "POST":
+        first_name = (request.form.get("full_name") or "").strip()
+        surname = (request.form.get("surname") or "").strip() or None
         title = (request.form.get("title") or "").strip() or None
         gender = (request.form.get("gender") or "").strip() or None
         id_number = "".join(ch for ch in (request.form.get("id_number") or "").strip() if ch.isdigit()) or None
         dob_text = (request.form.get("date_of_birth") or "").strip()
         dob_value = None
+        if not first_name:
+            flash("First name is required.", "error")
+            return redirect(url_for("patient.profile"))
         if dob_text:
             try:
                 dob_value = date.fromisoformat(dob_text)
@@ -611,11 +646,16 @@ def profile():
             flash("Please select a valid gender.", "error")
             return redirect(url_for("patient.profile"))
 
+        current_user.full_name = first_name
+        current_user.surname = surname
         current_user.title = title
         current_user.gender = gender
+        p.full_name = " ".join(part for part in (first_name, surname) if part)
+        p.surname = surname
         p.id_number = id_number
         current_user.sa_id_number = id_number
         p.phone = request.form.get("phone") or None
+        current_user.phone = p.phone
         p.address = request.form.get("address") or None
         p.gender = gender
         blood_type = (request.form.get("blood_type") or "").strip().upper() or None
@@ -638,6 +678,7 @@ def profile():
         if "current_medication" in request.form:
             p.current_medication = (request.form.get("current_medication") or "").strip() or None
         p.date_of_birth = dob_value
+        current_user.date_of_birth = dob_value
         # Avatar upload (optional)
         f = request.files.get("avatar")
         if f and f.filename:
@@ -649,12 +690,26 @@ def profile():
                 f.save(os.path.join(current_app.config["AVATAR_UPLOAD_DIR"],
                                     secure_filename(fname)))
                 current_user.avatar_url = url_for("static", filename=f"avatars/{fname}") + f"?v={uuid.uuid4().hex[:6]}"
+        log_audit(
+            current_user.id,
+            "update_patient_profile",
+            "patient",
+            p.id,
+            {"fields": ["first_name", "surname", "profile"]},
+        )
         db.session.commit()
         flash("Profile updated.", "success")
         return redirect(url_for("patient.profile"))
+    patient_first_name = current_user.full_name or p.full_name or ""
+    patient_surname = current_user.surname or p.surname or ""
+    suffix = f" {patient_surname}".lower()
+    if patient_surname and patient_first_name.lower().endswith(suffix):
+        patient_first_name = patient_first_name[:-len(suffix)].strip()
     return render_template(
         "patient/profile.html",
         patient=p,
+        patient_first_name=patient_first_name,
+        patient_surname=patient_surname,
         all_conditions=Condition.query.filter(Condition.active.is_(True), Condition.deleted_at.is_(None)).order_by(Condition.category, Condition.name).all(),
         all_allergies=Allergy.query.filter(Allergy.active.is_(True), Allergy.deleted_at.is_(None)).order_by(Allergy.category, Allergy.name).all(),
         all_medications=Medication.query.filter(Medication.active.is_(True), Medication.deleted_at.is_(None)).order_by(Medication.category, Medication.name).all(),
@@ -1109,18 +1164,54 @@ def consent():
     p = _my_patient()
     if not p:
         abort(404)
-    grants = (ConsentGrant.query
-              .filter_by(patient_id=p.id)
-              .order_by(ConsentGrant.granted_at.desc()).all())
+    consent_page = _page_number(request.args.get("page"))
+    consent_per_page = 10
+    grants_query = ConsentGrant.query.filter_by(patient_id=p.id)
+    consent_total = grants_query.count()
+    consent_pages = max(1, (consent_total + consent_per_page - 1) // consent_per_page)
+    consent_page = min(consent_page, consent_pages)
+    grants = (
+        grants_query
+        .options(
+            selectinload(ConsentGrant.doctor),
+            selectinload(ConsentGrant.requests)
+            .selectinload(TestRequest.items)
+            .selectinload(TestRequestItem.test),
+            selectinload(ConsentGrant.request_items)
+            .selectinload(TestRequestItem.test),
+        )
+        .order_by(ConsentGrant.granted_at.desc())
+        .offset((consent_page - 1) * consent_per_page)
+        .limit(consent_per_page)
+        .all()
+    )
     doctors = (User.query
                .join(UserRole, UserRole.user_id == User.id)
                .filter(UserRole.role == "doctor")
                .order_by(User.full_name).all())
-    requests_ = (TestRequest.query
-                 .filter_by(patient_id=p.id)
-                 .order_by(TestRequest.created_at.desc()).all())
+    requests_ = (
+        TestRequest.query
+        .options(
+            selectinload(TestRequest.items)
+            .selectinload(TestRequestItem.test),
+        )
+        .filter_by(patient_id=p.id)
+        .order_by(TestRequest.created_at.desc())
+        .all()
+    )
     return render_template("patient/consent.html",
-                           grants=grants, doctors=doctors, requests=requests_)
+                           grants=grants, doctors=doctors, requests=requests_,
+                           consent_page=consent_page,
+                           consent_pages=consent_pages,
+                           consent_total=consent_total,
+                           consent_start=(
+                               (consent_page - 1) * consent_per_page + 1
+                               if consent_total else 0
+                           ),
+                           consent_end=min(
+                               consent_page * consent_per_page,
+                               consent_total,
+                           ))
 
 
 @bp.route("/consent/grant", methods=["POST"])
@@ -1178,7 +1269,56 @@ def consent_revoke(grant_id):
         log_audit(current_user.id, "consent_revoke", "consent_grant", g.id)
         db.session.commit()
         flash("Access revoked.", "success")
-    return redirect(url_for("patient.consent"))
+    return _consent_redirect()
+
+
+@bp.route("/consent/<grant_id>/items/<item_id>/revoke", methods=["POST"])
+def consent_revoke_item(grant_id, item_id):
+    p = _my_patient()
+    g = db.session.get(ConsentGrant, grant_id)
+    item = db.session.get(TestRequestItem, item_id)
+    if not (p and g and item and g.patient_id == p.id):
+        abort(404)
+    if not item.request or item.request.patient_id != p.id:
+        abort(404)
+    if g.revoked_at:
+        flash("Consent already revoked.", "error")
+        return _consent_redirect()
+    if item not in g.request_items:
+        flash("That test is not currently shared with this doctor.", "error")
+        return _consent_redirect()
+
+    request_id = item.request_id
+    doctor_id = g.doctor_id
+    request_number = item.request.request_number
+    test_name = item.test.name if item.test else "selected test"
+    g.request_items.remove(item)
+    if not any(shared.request_id == request_id for shared in g.request_items):
+        g.requests = [shared_request for shared_request in g.requests if shared_request.id != request_id]
+
+    if not g.request_items:
+        g.revoked_at = datetime.now()
+        body = "The patient revoked the final shared test on this consent grant."
+        flash("Selected test revoked. This doctor no longer has active access from this grant.", "success")
+    else:
+        body = f"Access to {test_name} on request {request_number} was revoked by the patient."
+        flash("Selected test access revoked.", "success")
+
+    db.session.add(Notification(
+        user_id=doctor_id,
+        title="Patient updated shared result access",
+        body=body,
+        link=url_for("doctor.shared_requests"),
+    ))
+    log_audit(
+        current_user.id,
+        "consent_revoke_item",
+        "consent_grant",
+        g.id,
+        {"item_id": item.id, "request_id": request_id, "doctor_id": doctor_id},
+    )
+    db.session.commit()
+    return _consent_redirect()
 
 
 # ---------------------------------------------------------------------------
@@ -1219,8 +1359,7 @@ def access_request_accept(req_id):
         flash("Select at least one test result to share, or use Select all for a request.", "error")
         return redirect(url_for("patient.access_requests"))
     selected = _requests_from_items(selected_items)
-    grant = ConsentGrant(patient_id=p.id, doctor_id=ar.doctor_id,
-                         note=f"Auto-granted via access request {ar.id}")
+    grant = ConsentGrant(patient_id=p.id, doctor_id=ar.doctor_id)
     grant.requests = selected
     grant.request_items = selected_items
     db.session.add(grant)
