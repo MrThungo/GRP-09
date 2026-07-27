@@ -106,14 +106,14 @@ def release_request(req: TestRequest, actor_id, note=None):
         if note:
             patient_body += f"Release note: {note}\n\n"
         patient_body += (
-            "Please sign in to view the report. If you have questions about the results, contact your doctor or the laboratory.\n\n"
+            "If you have questions about the results, contact your doctor or the laboratory.\n\n"
             f"Open results: {results_url}\n\n"
             ""
         )
         attachments = []
         if not chronic_release:
             pdf = build_request_results_pdf(req)
-            patient_body += f"Download PDF after sign-in: {pdf_url}\n\n"
+            patient_body += f"Download PDF: {pdf_url}\n\n"
             attachments.append((f"{req.request_number}-results.pdf", "application/pdf", pdf.getvalue()))
         else:
             patient_body += "No report file is attached to this email. Please use the secure portal to view chronic-care results.\n\n"

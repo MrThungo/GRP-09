@@ -1,4 +1,5 @@
 {% extends "layouts/base.html" %}
+{% from "_macros.html" import sample_barcode, status_badge %}
 
 {% block content %}
 
@@ -97,6 +98,43 @@
 
     </div>
 
+    <section class="mb-8 overflow-hidden rounded-2xl border border-slate-800 bg-[#0B1120]">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-6 py-4">
+            <h2 class="text-xl font-semibold text-white">Samples and barcodes</h2>
+            <span class="text-xs text-slate-400">
+                {{ req.samples|length }} sample{{ '' if req.samples|length == 1 else 's' }}
+            </span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full min-w-[760px] text-sm">
+                <thead class="bg-[#111827] text-left text-xs uppercase text-slate-400">
+                    <tr>
+                        <th class="px-6 py-4">Barcode</th>
+                        <th>Sample type</th>
+                        <th>Status</th>
+                        <th>Collected</th>
+                        <th>Received</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sample in req.samples %}
+                    <tr class="border-t border-slate-800">
+                        <td class="px-6 py-4">{{ sample_barcode(sample) }}</td>
+                        <td>{{ sample.sample_type }}</td>
+                        <td>{{ status_badge(sample.status) }}</td>
+                        <td class="text-xs text-slate-400">{{ sample.collected_at.strftime('%Y-%m-%d %H:%M') if sample.collected_at else '-' }}</td>
+                        <td class="text-xs text-slate-400">{{ sample.received_at.strftime('%Y-%m-%d %H:%M') if sample.received_at else '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-6 text-slate-500">No samples recorded.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
     <!-- TESTS -->
     <div class="bg-[#0B1120] border border-slate-800 rounded-2xl overflow-hidden">
 
@@ -108,7 +146,8 @@
 
         </div>
 
-        <table class="w-full text-sm">
+        <div class="overflow-x-auto">
+        <table class="w-full min-w-[820px] text-sm">
 
             <thead class="bg-[#111827] text-slate-400 uppercase text-xs">
 
@@ -204,6 +243,7 @@
             </tbody>
 
         </table>
+        </div>
 
     </div>
 

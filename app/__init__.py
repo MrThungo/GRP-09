@@ -469,6 +469,10 @@ def create_app():
         "SMTP_DEFAULT_SENDER",
         default=app.config["MAIL_USERNAME"] or "no-reply@medilabconnect.local",
     )
+    app.config["ADMIN_CONTACT_EMAIL"] = _env_value(
+        "ADMIN_CONTACT_EMAIL",
+        default=app.config["MAIL_USERNAME"] or app.config["MAIL_DEFAULT_SENDER"],
+    )
     try:
         app.config["SMTP_TIMEOUT_SECONDS"] = max(
             3,
@@ -527,6 +531,13 @@ def create_app():
     # not SMS or WhatsApp.
     app.config["TWILIO_ACCOUNT_SID"] = os.environ.get("TWILIO_ACCOUNT_SID", "")
     app.config["TWILIO_AUTH_TOKEN"] = os.environ.get("TWILIO_AUTH_TOKEN", "")
+    try:
+        app.config["WEBRTC_TWILIO_TOKEN_TTL_SECONDS"] = min(
+            86400,
+            max(300, int(os.environ.get("WEBRTC_TWILIO_TOKEN_TTL_SECONDS", "3600"))),
+        )
+    except ValueError:
+        app.config["WEBRTC_TWILIO_TOKEN_TTL_SECONDS"] = 3600
     app.config["TWILIO_API_KEY_SID"] = os.environ.get("TWILIO_API_KEY_SID", "")
     app.config["TWILIO_API_KEY_SECRET"] = os.environ.get("TWILIO_API_KEY_SECRET", "")
     app.config["TWILIO_CONVERSATIONS_SERVICE_SID"] = os.environ.get(
@@ -642,6 +653,10 @@ def create_app():
         return {
             "app_name": app.config.get("APP_NAME", "MediLab Connect"),
             "app_url": app_url,
+            "admin_contact_email": app.config.get(
+                "ADMIN_CONTACT_EMAIL",
+                app.config.get("MAIL_DEFAULT_SENDER", ""),
+            ),
         }
 
     @app.cli.command("cleanup-recordings")

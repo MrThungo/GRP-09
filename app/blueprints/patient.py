@@ -504,7 +504,11 @@ def requests_list():
     created_from = _date_filter_value("created_from")
     created_to = _date_filter_value("created_to")
     if p:
-        query = TestRequest.query.filter_by(patient_id=p.id)
+        query = (
+            TestRequest.query
+            .options(selectinload(TestRequest.samples))
+            .filter_by(patient_id=p.id)
+        )
         if filters["q"]:
             query = query.filter(TestRequest.request_number.ilike(f"%{filters['q']}%"))
         if filters["status"] in REQUEST_STATUSES:

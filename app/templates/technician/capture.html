@@ -1,5 +1,5 @@
 {% extends "layouts/base.html" %}
-{% from "_macros.html" import status_badge %}
+{% from "_macros.html" import sample_barcode, status_badge %}
 {% block page_title %}Process {{ req.request_number }}{% endblock %}
 {% block content %}
 <div class="bg-slate-950 border border-slate-800 rounded-lg p-4 mb-4 text-sm">
@@ -81,7 +81,7 @@
       <tbody>
         {% for sample in req.samples %}
         <tr class="border-t border-slate-800">
-          <td class="py-2 font-mono">{{ sample.barcode }}</td>
+          <td class="py-2 pr-4">{{ sample_barcode(sample) }}</td>
           <td>{{ sample.sample_type }}</td>
           <td>{{ status_badge(sample.status) }}</td>
           <td>{{ sample.received_at.strftime('%Y-%m-%d %H:%M') if sample.received_at else '-' }}</td>

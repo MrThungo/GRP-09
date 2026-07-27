@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from PIL import Image
@@ -11,7 +12,7 @@ from PIL import Image
 from app import create_app
 from app.extensions import db
 from app.landing_team import landing_team_picture_filename
-from app.models import AuditLog, User, UserRole
+from app.models import AuditLog, Patient, Sample, TestRequest, User, UserRole
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -37,6 +38,7 @@ class UiSecurityPresentationTest(unittest.TestCase):
             TESTING=True,
             SERVER_NAME="localhost",
             AVATAR_UPLOAD_DIR=self.avatar_directory.name,
+            ADMIN_CONTACT_EMAIL="lab-admin@example.com",
         )
         self.client = self.app.test_client()
 
@@ -46,9 +48,27 @@ class UiSecurityPresentationTest(unittest.TestCase):
             ).one()
             normal_admin = User.query.filter_by(email="admin@nmbhlab.com").one()
             patient = User.query.filter_by(email="patient@nmbhlab.com").one()
+            doctor = User.query.filter_by(email="doctor@nmbhlab.com").one()
+            patient_record = Patient.query.filter_by(profile_id=patient.id).one()
+            barcode_request = TestRequest(
+                request_number="REQ-BARCODE-UI-TEST",
+                patient_id=patient_record.id,
+                doctor_id=doctor.id,
+                status="submitted",
+                priority="routine",
+            )
+            barcode_sample = Sample(
+                request=barcode_request,
+                barcode="REQ-BARCODE-UI-TEST-EDTA-01",
+                sample_type="EDTA Blood",
+            )
+            db.session.add_all([barcode_request, barcode_sample])
+            db.session.commit()
             self.super_admin_id = super_admin.id
             self.normal_admin_id = normal_admin.id
             self.patient_id = patient.id
+            self.doctor_id = doctor.id
+            self.sample_id = barcode_sample.id
 
     def tearDown(self):
         with self.app.app_context():
@@ -163,6 +183,75 @@ class UiSecurityPresentationTest(unittest.TestCase):
                 ).count(),
                 1,
             )
+
+    def test_landing_uses_project_content_team_cards_and_sender_contact(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        page = html.unescape(response.get_data(as_text=True))
+        self.assertIn('id="care-journey"', page)
+        self.assertIn("Connected diagnostic journey", page)
+        self.assertIn('id="connected-care"', page)
+        self.assertIn("Live sample visibility", page)
+        self.assertIn("landing-team-picture", page)
+        self.assertIn("lab-admin@example.com", page)
+        self.assertNotIn('href="#security"', page)
+        self.assertNotIn('href="#workflow"', page)
+
+    def test_release_message_does_not_tell_an_authenticated_user_to_sign_in(self):
+        service_path = os.path.join(PROJECT_ROOT, "app", "services.py")
+        with open(service_path, encoding="utf-8") as service_file:
+            source = service_file.read()
+        self.assertNotIn("Please sign in to view the report.", source)
+        self.assertNotIn("Download PDF after sign-in:", source)
+
+    def test_scannable_barcode_is_visible_to_the_sample_patient(self):
+        self.login_as(self.patient_id)
+        barcode = self.client.get(f"/api/samples/{self.sample_id}/barcode.svg")
+        self.assertEqual(barcode.status_code, 200)
+        self.assertEqual(barcode.mimetype, "image/svg+xml")
+        self.assertIn(b"<svg", barcode.data)
+
+        requests_page = self.client.get("/patient/requests")
+        self.assertEqual(requests_page.status_code, 200)
+        self.assertIn(
+            f"/api/samples/{self.sample_id}/barcode.svg",
+            requests_page.get_data(as_text=True),
+        )
+
+    def test_twilio_credentials_produce_short_lived_turn_configuration(self):
+        from app.blueprints.api import _webrtc_ice_server_payload
+
+        fake_token = SimpleNamespace(ice_servers=[
+            {"url": "stun:global.stun.twilio.com:3478"},
+            {
+                "url": "turn:global.turn.twilio.com:3478?transport=udp",
+                "username": "temporary-user",
+                "credential": "temporary-credential",
+            },
+            {
+                "url": "turns:global.turn.twilio.com:443?transport=tcp",
+                "username": "temporary-user",
+                "credential": "temporary-credential",
+            },
+        ])
+        with self.app.app_context(), patch("twilio.rest.Client") as client:
+            self.app.config.update(
+                TWILIO_ACCOUNT_SID="AC00000000000000000000000000000000",
+                TWILIO_AUTH_TOKEN="test-auth-token",
+            )
+            self.app.extensions.pop("webrtc_twilio_token", None)
+            client.return_value.tokens.create.return_value = fake_token
+
+            payload = _webrtc_ice_server_payload()
+
+        self.assertTrue(payload["turnConfigured"])
+        self.assertEqual(payload["relayProvider"], "twilio")
+        self.assertTrue(any(
+            str(url).startswith("turn:")
+            for server in payload["iceServers"]
+            for url in server["urls"]
+        ))
+        client.return_value.tokens.create.assert_called_once_with(ttl=3600)
 
 
 if __name__ == "__main__":

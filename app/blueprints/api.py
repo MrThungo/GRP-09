@@ -10,6 +10,7 @@ from ..extensions import db
 from ..models import (
     AccessRequest,
     ChatMessage,
+    ConsentGrant,
     Consumable,
     ConsumableOrder,
     DoctorAvailabilitySlot,
@@ -398,24 +399,90 @@ def _webrtc_ice_server_payload():
     ]
     turn_username = current_app.config.get("WEBRTC_TURN_USERNAME") or ""
     turn_credential = current_app.config.get("WEBRTC_TURN_CREDENTIAL") or ""
-    turn_configured = bool(turn_urls and turn_username and turn_credential)
+    static_turn_configured = bool(turn_urls and turn_username and turn_credential)
 
     if stun_urls:
         ice_servers.append({"urls": stun_urls})
-    if turn_configured:
+    if static_turn_configured:
         ice_servers.append({
             "urls": turn_urls,
             "username": turn_username,
             "credential": turn_credential,
         })
 
+    twilio_ice_servers = _twilio_network_traversal_servers()
+    if twilio_ice_servers:
+        ice_servers.extend(twilio_ice_servers)
+
+    turn_configured = static_turn_configured or any(
+        str(url).lower().startswith(("turn:", "turns:"))
+        for server in twilio_ice_servers
+        for url in (
+            server.get("urls", [])
+            if isinstance(server.get("urls"), list)
+            else [server.get("urls")]
+        )
+        if url
+    )
     payload = {
         "iceServers": ice_servers,
         "turnConfigured": turn_configured,
+        "relayProvider": (
+            "twilio"
+            if twilio_ice_servers
+            else ("static" if static_turn_configured else "none")
+        ),
     }
     if current_app.config.get("WEBRTC_FORCE_RELAY"):
         payload["iceTransportPolicy"] = "relay"
     return payload
+
+
+def _twilio_network_traversal_servers():
+    """Return cached, short-lived Twilio STUN/TURN credentials when configured."""
+    account_sid = current_app.config.get("TWILIO_ACCOUNT_SID") or ""
+    auth_token = current_app.config.get("TWILIO_AUTH_TOKEN") or ""
+    if not (account_sid and auth_token):
+        return []
+
+    cache = current_app.extensions.setdefault("webrtc_twilio_token", {})
+    now = datetime.now()
+    expires_at = cache.get("expires_at")
+    cached_servers = cache.get("ice_servers")
+    if cached_servers and expires_at and expires_at > now + timedelta(minutes=5):
+        return cached_servers
+
+    ttl = int(current_app.config.get("WEBRTC_TWILIO_TOKEN_TTL_SECONDS", 3600))
+    try:
+        from twilio.rest import Client
+
+        token = Client(account_sid, auth_token).tokens.create(ttl=ttl)
+        raw_servers = getattr(token, "ice_servers", None) or []
+        normalized = []
+        for server in raw_servers:
+            if not isinstance(server, dict):
+                continue
+            raw_urls = server.get("urls") or server.get("url")
+            urls = raw_urls if isinstance(raw_urls, list) else [raw_urls]
+            urls = [url for url in urls if isinstance(url, str) and url.strip()]
+            if not urls:
+                continue
+            entry = {"urls": urls}
+            if server.get("username"):
+                entry["username"] = server["username"]
+            if server.get("credential"):
+                entry["credential"] = server["credential"]
+            normalized.append(entry)
+        if normalized:
+            cache["ice_servers"] = normalized
+            cache["expires_at"] = now + timedelta(seconds=ttl)
+            return normalized
+    except Exception:
+        current_app.logger.warning(
+            "Could not obtain short-lived Twilio network traversal credentials.",
+            exc_info=True,
+        )
+    return []
 
 
 @bp.route("/consultations/<consultation_id>/<room_token>/ice-servers")
@@ -424,7 +491,61 @@ def consultation_ice_servers(consultation_id, room_token):
     """Return browser ICE configuration for an invite-only consultation."""
     _consultation_participant_or_404(consultation_id, room_token)
     payload = _webrtc_ice_server_payload()
-    return jsonify(payload)
+    response = jsonify(payload)
+    response.headers["Cache-Control"] = "no-store, private"
+    return response
+
+
+@bp.route("/samples/<sample_id>/barcode.svg")
+@login_required
+def sample_barcode_svg(sample_id):
+    """Render a barcode only when the signed-in user can access its request."""
+    role = current_user.primary_role
+    patient = _patient_for_current_user() if role == "patient" else None
+    sample = (
+        _scoped_sample_query(role, patient)
+        .filter(Sample.id == sample_id)
+        .first()
+    )
+    if not sample and role == "doctor":
+        shared_sample = db.session.get(Sample, sample_id)
+        if shared_sample:
+            active_grant = (
+                ConsentGrant.query
+                .filter_by(
+                    doctor_id=current_user.id,
+                    patient_id=shared_sample.request.patient_id,
+                    revoked_at=None,
+                )
+                .filter(or_(
+                    ConsentGrant.requests.any(TestRequest.id == shared_sample.request_id),
+                    ConsentGrant.request_items.any(
+                        TestRequestItem.request_id == shared_sample.request_id
+                    ),
+                ))
+                .first()
+            )
+            if active_grant:
+                sample = shared_sample
+    if not sample:
+        abort(404)
+
+    from reportlab.graphics import renderSVG
+    from reportlab.graphics.barcode import createBarcodeDrawing
+
+    drawing = createBarcodeDrawing(
+        "Code128",
+        value=sample.barcode,
+        barHeight=38,
+        barWidth=0.9,
+        humanReadable=False,
+    )
+    svg = renderSVG.drawToString(drawing)
+    response = current_app.response_class(svg, mimetype="image/svg+xml")
+    response.headers["Cache-Control"] = "private, max-age=3600"
+    response.headers["Vary"] = "Cookie"
+    response.set_etag(hashlib.sha256(sample.barcode.encode("utf-8")).hexdigest())
+    return response
 
 
 @bp.route("/consultations/<consultation_id>/<room_token>/status")

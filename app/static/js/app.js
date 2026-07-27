@@ -437,6 +437,31 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   onScroll();
 })();
 
+// --- Controlled landing-page reveal motion ---
+(function () {
+  const items = Array.from(document.querySelectorAll("[data-reveal]"));
+  if (!items.length) return;
+
+  document.documentElement.classList.add("reveal-motion-ready");
+  if (!("IntersectionObserver" in window) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    items.forEach(item => item.classList.add("is-revealed"));
+    return;
+  }
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("is-revealed");
+      observer.unobserve(entry.target);
+    });
+  }, {
+    rootMargin: "0px 0px -8% 0px",
+    threshold: 0.12,
+  });
+
+  items.forEach(item => observer.observe(item));
+})();
+
 // --- Landing hero video mobile resume ---
 (function () {
   const video = document.querySelector("[data-hero-video]");
@@ -652,9 +677,17 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   const localEndpoint = window.nmbUrl(root.dataset.localEndpoint || "");
   const twilioSessionEndpoint = window.nmbUrl(root.dataset.twilioSessionEndpoint || "");
   const assistantName = root.dataset.assistantName || "MediLab Assistant";
+  const mobileQuery = window.matchMedia("(max-width: 640px)");
   let twilioConversation = null;
   let twilioIdentity = "";
   let booted = false;
+
+  function syncMobileViewport() {
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    document.documentElement.style.setProperty("--chatbot-viewport-height", `${Math.round(viewportHeight)}px`);
+    const mobileOpen = mobileQuery.matches && root.classList.contains("open");
+    document.body?.classList.toggle("chatbot-mobile-open", mobileOpen);
+  }
 
   function setFullscreen(fullscreen) {
     root.classList.toggle("fullscreen", fullscreen);
@@ -676,9 +709,10 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     panel?.setAttribute("aria-hidden", open ? "false" : "true");
     if (!open) setFullscreen(false);
     document.body?.classList.toggle("chatbot-fullscreen-open", open && root.classList.contains("fullscreen"));
+    syncMobileViewport();
     if (open) {
       boot();
-      setTimeout(() => input?.focus(), 80);
+      if (!mobileQuery.matches) setTimeout(() => input?.focus(), 80);
     }
   }
 
@@ -803,6 +837,10 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
     setTimeout(() => input?.focus(), 80);
   });
   closeButton?.addEventListener("click", () => setOpen(false));
+  window.visualViewport?.addEventListener("resize", syncMobileViewport, { passive: true });
+  window.addEventListener("orientationchange", syncMobileViewport, { passive: true });
+  mobileQuery.addEventListener?.("change", syncMobileViewport);
+  syncMobileViewport();
   document.addEventListener("keydown", event => {
     if (event.key === "Escape" && root.classList.contains("open")) {
       if (root.classList.contains("fullscreen")) {

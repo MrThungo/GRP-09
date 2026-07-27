@@ -50,6 +50,16 @@
   {% endif %}
 {% endmacro %}
 
+{% macro sample_barcode(sample, compact=false) %}
+<div class="sample-barcode{% if compact %} sample-barcode-compact{% endif %}">
+  <img class="sample-barcode-image"
+       src="{{ url_for('api.sample_barcode_svg', sample_id=sample.id) }}"
+       alt="Scannable barcode for sample {{ sample.barcode }}"
+       loading="lazy">
+  <code>{{ sample.barcode }}</code>
+</div>
+{% endmacro %}
+
 {% macro searchable_multiselect(field_id, name, label, items, selected_ids=[]) %}
 <div data-searchable-multi>
   <label class="text-xs text-slate-400" for="{{ field_id }}_search">{{ label }}</label>

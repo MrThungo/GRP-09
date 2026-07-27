@@ -160,7 +160,8 @@ Port `587` with STARTTLS is the safest default on hosted/school networks. Port
 The live consultation room uses WebRTC in the browser. Flask/IIS handles
 invite-only room access and signaling; the actual camera/microphone media must
 connect browser-to-browser or through a TURN relay. For reliable calls across
-campus, home, and mobile networks, configure a TURN service in `env.txt`:
+campus, home, and mobile networks, configure either a static TURN service in
+`env.txt`:
 
 ```bash
 WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
@@ -169,6 +170,11 @@ WEBRTC_TURN_USERNAME=your-turn-username
 WEBRTC_TURN_CREDENTIAL=your-turn-password
 WEBRTC_FORCE_RELAY=false
 ```
+
+Or set `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN`. The consultation endpoint
+will then request short-lived Twilio Network Traversal credentials, cache them
+only in application memory, and return them only to authenticated consultation
+participants. `WEBRTC_TWILIO_TOKEN_TTL_SECONDS` defaults to `3600`.
 
 Set `WEBRTC_FORCE_RELAY=true` temporarily when testing TURN, then switch it back
 to `false` after confirming the live room connects.

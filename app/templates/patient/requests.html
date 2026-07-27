@@ -1,5 +1,5 @@
 {% extends "layouts/base.html" %}
-{% from "_macros.html" import status_badge %}
+{% from "_macros.html" import sample_barcode, status_badge %}
 {% block page_title %}My requests{% endblock %}
 {% block content %}
 <form method="get" class="mb-4 rounded-lg border border-slate-800 bg-slate-950 p-4">
@@ -53,10 +53,11 @@
 
 <div class="rounded-lg border border-slate-800 bg-slate-950 overflow-hidden">
   <div class="overflow-x-auto">
-    <table class="w-full min-w-[720px] text-sm">
+    <table class="w-full min-w-[980px] text-sm">
       <thead class="text-left text-slate-400 text-xs uppercase">
         <tr>
           <th class="px-4 py-2">Number</th>
+          <th>Sample barcode</th>
           <th>Status</th>
           <th>Priority</th>
           <th>Created</th>
@@ -67,6 +68,15 @@
       {% for r in requests %}
         <tr class="border-t border-slate-800">
           <td class="px-4 py-2 font-mono text-xs">{{ r.request_number }}</td>
+          <td class="py-2 pr-4">
+            <div class="flex flex-col gap-2">
+              {% for sample in r.samples %}
+                {{ sample_barcode(sample, true) }}
+              {% else %}
+                <span class="text-xs text-slate-500">Not recorded</span>
+              {% endfor %}
+            </div>
+          </td>
           <td>{{ status_badge(r.status) }}</td>
           <td>{{ r.priority|title }}</td>
           <td class="text-slate-400 text-xs">{{ r.created_at.strftime('%Y-%m-%d') }}</td>
@@ -79,7 +89,7 @@
         </tr>
       {% else %}
         <tr>
-          <td class="px-4 py-6 text-center text-slate-500" colspan="5">No requests match these filters.</td>
+          <td class="px-4 py-6 text-center text-slate-500" colspan="6">No requests match these filters.</td>
         </tr>
       {% endfor %}
       </tbody>

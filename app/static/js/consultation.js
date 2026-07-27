@@ -193,6 +193,7 @@
     statusTimer = null;
     if (peer) {
       peer.onicecandidate = null;
+      peer.onicecandidateerror = null;
       peer.ontrack = null;
       peer.onconnectionstatechange = null;
       peer.oniceconnectionstatechange = null;
@@ -392,6 +393,12 @@
 
     peer.onicecandidate = (event) => {
       if (event.candidate) sendSignal("ice", event.candidate).catch(() => {});
+    };
+
+    peer.onicecandidateerror = (event) => {
+      if (event.errorCode === 701 && !turnRelayConfigured) {
+        setStatus("Direct connection is limited. Trying the remaining secure routes...");
+      }
     };
 
     peer.ontrack = (event) => {

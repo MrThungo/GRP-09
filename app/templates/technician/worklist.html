@@ -1,5 +1,5 @@
 {% extends "layouts/base.html" %}
-{% from "_macros.html" import status_badge %}
+{% from "_macros.html" import sample_barcode, status_badge %}
 
 {% block page_title %}{{ title }}{% endblock %}
 
@@ -59,9 +59,10 @@
           <td>
             <div>{{ item.test.sample_type or '-' }}</div>
             {% if item.request.samples %}
-            <div class="mt-1 text-xs text-slate-500">
+            <div class="mt-2 flex flex-col gap-2">
               {% for sample in item.request.samples %}
-                {{ sample.sample_type }}: {{ sample.status.replace('_', ' ') }}{% if not loop.last %}, {% endif %}
+                {{ sample_barcode(sample, true) }}
+                <span class="text-xs text-slate-500">{{ sample.sample_type }}: {{ sample.status.replace('_', ' ') }}</span>
               {% endfor %}
             </div>
             {% endif %}
