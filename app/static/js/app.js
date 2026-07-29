@@ -6,7 +6,7 @@
   const rawBase = window.NMB_APP_BASE_PATH || meta?.content || "";
   const base = rawBase && rawBase !== "/" ? rawBase.replace(/\/+$/, "") : "";
 
-  window.nmbUrl = function (path) {
+  window.nmbUrl = window.nmbUrl || function (path) {
     const value = String(path || "");
     if (!value) return base || "/";
     if (value === "#" || value.startsWith("#")) return value;

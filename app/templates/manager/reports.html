@@ -2,7 +2,7 @@
 {% from "_macros.html" import stat_card %}
 {% block page_title %}Reports{% endblock %}
 {% block head_extra %}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='vendor/chart.umd.js', v=config.STATIC_ASSET_VERSION) }}"></script>
 {% endblock %}
 {% block content %}
 <form method="get" class="flex flex-wrap items-end gap-3 mb-5 bg-slate-950 border border-slate-800 rounded-lg p-4">

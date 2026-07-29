@@ -300,6 +300,7 @@ def _static_asset_version(app):
         os.path.join(app.static_folder, "css", "app.css"),
         os.path.join(app.static_folder, "js", "app.js"),
         os.path.join(app.static_folder, "js", "consultation.js"),
+        os.path.join(app.static_folder, "vendor", "chart.umd.js"),
     ]
     try:
         return str(max(int(os.path.getmtime(path)) for path in candidates if os.path.exists(path)))

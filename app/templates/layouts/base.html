@@ -12,6 +12,22 @@
   <title>{% if browser_title %}{{ browser_title }} | {% endif %}{{ app_name }}</title>
   <meta name="description" content="{{ app_name }} secure laboratory test request, consultation and results portal.">
   <meta name="app-base-path" content="{{ request.script_root or '' }}">
+  <script>
+    (function () {
+      const rawBase = {{ (request.script_root or '')|tojson }};
+      const base = rawBase && rawBase !== "/" ? rawBase.replace(/\/+$/, "") : "";
+      window.NMB_APP_BASE_PATH = rawBase;
+      window.nmbUrl = function (path) {
+        const value = String(path || "");
+        if (!value) return base || "/";
+        if (value === "#" || value.startsWith("#")) return value;
+        if (/^(https?:|mailto:|tel:)/i.test(value) || value.startsWith("//")) return value;
+        if (!value.startsWith("/")) return `${base}/${value}`;
+        if (base && value.startsWith(`${base}/`)) return value;
+        return `${base}${value}`;
+      };
+    })();
+  </script>
   <style>
     html, body { background: #020617; color: #f1f5f9; }
   </style>
@@ -44,7 +60,6 @@
   {% endif %}
   {% block head_extra %}{% endblock %}
   <script>
-    window.NMB_APP_BASE_PATH = {{ (request.script_root or '')|tojson }};
     window.applyNmbChartDefaults = function () {
       if (!window.Chart) return;
       Chart.defaults.responsive = true;
