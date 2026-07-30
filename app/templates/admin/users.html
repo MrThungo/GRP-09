@@ -9,6 +9,10 @@
     <p class="mt-2 text-sm text-slate-400">
       Search users or actors by name, email, role, ID number, employee number or HPCSA number.
     </p>
+    <a href="{{ url_for('admin.create_user') }}"
+       class="btn-primary mt-4 inline-flex px-4 py-2 text-sm">
+      Add user
+    </a>
   </div>
 
   <form method="get" action="{{ url_for('admin.users') }}" class="flex w-full flex-col gap-2 sm:flex-row lg:max-w-xl">

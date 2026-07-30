@@ -12,6 +12,7 @@ from flask import (
 from flask_login import login_required, current_user
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from werkzeug.utils import secure_filename
 
@@ -27,6 +28,7 @@ from ..sa_id import validate_sa_id
 from ..services import notify, log_audit, send_email
 from ..soft_delete import soft_delete
 from ..presence import last_seen_age_label
+from ..whatsapp import send_account_welcome_whatsapp
 from .api import ONLINE_WINDOW_MINUTES, ONLINE_WINDOW_SECONDS
 
 bp = Blueprint("admin", __name__, template_folder="../templates/admin")
@@ -525,6 +527,185 @@ def dashboard():
 
 
 # ---------- Users & roles ----------
+@bp.route("/users/new", methods=["GET", "POST"])
+def create_user():
+    role_choices = _admin_role_choices()
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip() or None
+        full_name = (request.form.get("full_name") or "").strip()
+        surname = (request.form.get("surname") or "").strip()
+        email = (request.form.get("email") or "").lower().strip()
+        phone = (request.form.get("phone") or "").strip() or None
+        gender = (request.form.get("gender") or "").strip() or None
+        employee_number = (
+            request.form.get("employee_number") or ""
+        ).strip() or None
+        raw_sa_id = (request.form.get("sa_id_number") or "").strip()
+        sa_id_number = (
+            "".join(character for character in raw_sa_id if character.isdigit())
+            if raw_sa_id
+            else None
+        )
+        hpcsa_number = (request.form.get("hpcsa_number") or "").strip() or None
+        address = (request.form.get("address") or "").strip() or None
+        role = (request.form.get("role") or "").strip()
+        dob, dob_error = _admin_dob_from_form()
+
+        errors = []
+        if not full_name:
+            errors.append("First name is required.")
+        if not surname:
+            errors.append("Surname is required.")
+        if not email:
+            errors.append("Email is required.")
+        if role not in role_choices:
+            errors.append("Select a valid role.")
+        if title and title not in TITLE_OPTIONS:
+            errors.append("Select a valid title.")
+        if gender and gender not in GENDER_OPTIONS:
+            errors.append("Select a valid gender.")
+        if dob_error:
+            errors.append(dob_error)
+        if email and User.query.filter_by(email=email).first():
+            errors.append("That email is already registered.")
+        if (
+            employee_number
+            and User.query.filter_by(employee_number=employee_number).first()
+        ):
+            errors.append("That employee number is already registered.")
+        if sa_id_number and (
+            User.query.filter_by(sa_id_number=sa_id_number).first()
+            or Patient.query.filter_by(id_number=sa_id_number).first()
+        ):
+            errors.append("That SA ID number is already registered.")
+        if hpcsa_number and User.query.filter_by(
+            hpcsa_number=hpcsa_number
+        ).first():
+            errors.append("That HPCSA number is already registered.")
+
+        if errors:
+            for message in errors:
+                flash(message, "error")
+            return render_template(
+                "admin/create_user.html",
+                form=request.form,
+                ROLES=role_choices,
+                ROLE_LABELS=ROLE_LABELS,
+                title_options=TITLE_OPTIONS,
+                gender_options=GENDER_OPTIONS,
+            )
+
+        temporary_password = secrets.token_urlsafe(10) + "A1!"
+        user = User(
+            title=title,
+            full_name=full_name,
+            surname=surname,
+            email=email,
+            phone=phone,
+            gender=gender,
+            date_of_birth=dob,
+            employee_number=employee_number,
+            sa_id_number=sa_id_number,
+            hpcsa_number=hpcsa_number,
+            must_change_password=True,
+        )
+        user.set_password(temporary_password)
+        user.temp_password = temporary_password
+        db.session.add(user)
+        db.session.flush()
+        db.session.add(UserRole(user_id=user.id, role=role))
+
+        if role == "patient":
+            db.session.add(
+                Patient(
+                    profile_id=user.id,
+                    mrn="MRN-" + user.id[:8],
+                    full_name=f"{full_name} {surname}".strip(),
+                    surname=surname,
+                    id_number=sa_id_number,
+                    date_of_birth=dob,
+                    gender=gender,
+                    phone=phone,
+                    email=email,
+                    address=address,
+                    created_by=current_user.id,
+                )
+            )
+
+        log_audit(
+            current_user.id,
+            "create_user",
+            "user",
+            user.id,
+            {"role": role, "email": email},
+        )
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash(
+                "A user with one of those account identifiers already exists.",
+                "error",
+            )
+            return render_template(
+                "admin/create_user.html",
+                form=request.form,
+                ROLES=role_choices,
+                ROLE_LABELS=ROLE_LABELS,
+                title_options=TITLE_OPTIONS,
+                gender_options=GENDER_OPTIONS,
+            )
+
+        role_label = ROLE_LABELS[role]
+        delivered_by_email = send_email(
+            [user.email],
+            f"Your MediLab Connect {role_label} account",
+            (
+                f"Hello {user.full_name} {user.surname},\n\n"
+                f"An administrator created your MediLab Connect {role_label} account.\n\n"
+                f"Temporary password: {temporary_password}\n\n"
+                "You must choose a new password the first time you sign in.\n\n"
+                "- MediLab Connect"
+            ),
+        )
+        delivered_by_whatsapp = send_account_welcome_whatsapp(
+            user,
+            role=role,
+            temporary_password=temporary_password,
+        )
+        if delivered_by_email and delivered_by_whatsapp:
+            flash(
+                f"{role_label} account created. Sign-in details were sent by email and WhatsApp.",
+                "success",
+            )
+        elif delivered_by_email:
+            flash(
+                f"{role_label} account created. Sign-in details were sent by email.",
+                "success",
+            )
+        elif delivered_by_whatsapp:
+            flash(
+                f"{role_label} account created. Sign-in details were sent by WhatsApp.",
+                "success",
+            )
+        else:
+            flash(
+                f"{role_label} account created, but sign-in details could not be delivered. "
+                "Use the 2F-authentication password access workflow if needed.",
+                "error",
+            )
+        return redirect(url_for("admin.user_detail", user_id=user.id))
+
+    return render_template(
+        "admin/create_user.html",
+        form={},
+        ROLES=role_choices,
+        ROLE_LABELS=ROLE_LABELS,
+        title_options=TITLE_OPTIONS,
+        gender_options=GENDER_OPTIONS,
+    )
+
+
 @bp.route("/users")
 def users():
     status = request.args.get("status", "all")

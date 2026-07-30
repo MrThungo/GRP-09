@@ -1,0 +1,124 @@
+{% extends "layouts/base.html" %}
+{% block page_title %}Add user{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-5xl">
+  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <div class="section-kicker">User management</div>
+      <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+        Create an account and assign its access role. A temporary password is generated automatically and must be changed at first sign-in.
+      </p>
+    </div>
+    <a href="{{ url_for('admin.users') }}" class="btn-secondary px-4 py-2 text-sm">Back to users</a>
+  </div>
+
+  <form method="post" class="rounded-2xl border border-slate-800 bg-slate-950 p-5 sm:p-7">
+    <div class="grid gap-5 sm:grid-cols-2">
+      <div>
+        <label for="create_user_title" class="block text-sm text-slate-300">Title</label>
+        <select id="create_user_title" name="title" class="mt-2 w-full px-3 py-2.5 text-sm">
+          <option value="">No title</option>
+          {% for option in title_options %}
+            <option value="{{ option }}" {% if form.get('title') == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label for="create_user_role" class="block text-sm text-slate-300">Role</label>
+        <select id="create_user_role" name="role" required class="mt-2 w-full px-3 py-2.5 text-sm">
+          <option value="">Select a role</option>
+          {% for role in ROLES %}
+            <option value="{{ role }}" {% if form.get('role') == role %}selected{% endif %}>{{ ROLE_LABELS[role] }}</option>
+          {% endfor %}
+        </select>
+        <p class="mt-2 text-xs text-slate-500">Super Administrator access cannot be assigned here.</p>
+      </div>
+
+      <div>
+        <label for="create_user_first_name" class="block text-sm text-slate-300">First name</label>
+        <input id="create_user_first_name" name="full_name" type="text" required maxlength="120"
+               value="{{ form.get('full_name', '') }}"
+               class="mt-2 w-full px-3 py-2.5 text-sm">
+      </div>
+
+      <div>
+        <label for="create_user_surname" class="block text-sm text-slate-300">Surname</label>
+        <input id="create_user_surname" name="surname" type="text" required maxlength="120"
+               value="{{ form.get('surname', '') }}"
+               class="mt-2 w-full px-3 py-2.5 text-sm">
+      </div>
+
+      <div>
+        <label for="create_user_email" class="block text-sm text-slate-300">Email used as username</label>
+        <input id="create_user_email" name="email" type="email" required autocomplete="email"
+               value="{{ form.get('email', '') }}"
+               class="mt-2 w-full px-3 py-2.5 text-sm">
+      </div>
+
+      <div>
+        <label for="create_user_phone" class="block text-sm text-slate-300">Phone</label>
+        <input id="create_user_phone" name="phone" type="tel" maxlength="20"
+               value="{{ form.get('phone', '') }}"
+               class="mt-2 w-full px-3 py-2.5 text-sm">
+      </div>
+
+      <div>
+        <label for="create_user_gender" class="block text-sm text-slate-300">Gender</label>
+        <select id="create_user_gender" name="gender" class="mt-2 w-full px-3 py-2.5 text-sm">
+          <option value="">Not specified</option>
+          {% for option in gender_options %}
+            <option value="{{ option }}" {% if form.get('gender') == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label for="create_user_employee_number" class="block text-sm text-slate-300">Employee number</label>
+        <input id="create_user_employee_number" name="employee_number" type="text" maxlength="64"
+               value="{{ form.get('employee_number', '') }}"
+               class="mt-2 w-full px-3 py-2.5 text-sm">
+      </div>
+
+      <div>
+        <label for="create_user_sa_id" class="block text-sm text-slate-300">South African ID number</label>
+        <input id="create_user_sa_id" name="sa_id_number" type="text" inputmode="numeric"
+               maxlength="13" pattern="\d{13}" data-sa-id-source
+               value="{{ form.get('sa_id_number', '') }}"
+               class="mt-2 w-full px-3 py-2.5 font-mono text-sm">
+      </div>
+
+      <div>
+        <label for="create_user_dob" class="block text-sm text-slate-300">Date of birth</label>
+        <input id="create_user_dob" name="date_of_birth" type="date" data-sa-dob-target
+               value="{{ form.get('date_of_birth', '') }}"
+               class="mt-2 w-full px-3 py-2.5 text-sm">
+      </div>
+
+      <div>
+        <label for="create_user_hpcsa" class="block text-sm text-slate-300">HPCSA number</label>
+        <input id="create_user_hpcsa" name="hpcsa_number" type="text" maxlength="64"
+               value="{{ form.get('hpcsa_number', '') }}"
+               class="mt-2 w-full px-3 py-2.5 text-sm">
+      </div>
+
+      <div>
+        <label for="create_user_address" class="block text-sm text-slate-300">Address</label>
+        <textarea id="create_user_address" name="address" rows="3"
+                  class="mt-2 w-full px-3 py-2.5 text-sm">{{ form.get('address', '') }}</textarea>
+        <p class="mt-2 text-xs text-slate-500">Used in the patient record when the Patient role is selected.</p>
+      </div>
+    </div>
+
+    <div class="mt-6 rounded-xl border border-sky-900 bg-sky-950/30 p-4 text-sm leading-6 text-sky-100">
+      Sign-in details are sent to the new user by the configured email or WhatsApp service. The temporary password is never displayed on this form.
+    </div>
+
+    <div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+      <a href="{{ url_for('admin.users') }}" class="btn-secondary px-5 py-3 text-center text-sm">Cancel</a>
+      <button type="submit" class="btn-primary px-5 py-3 text-sm">Create user and assign role</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
