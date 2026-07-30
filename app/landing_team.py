@@ -8,6 +8,7 @@ TEAM_MEMBER_SPECS = (
         "student_number": "224497847",
         "role": "Lab Manager",
         "linkedin_url": "https://linkedin.com/in/nomhle-mncina-b192833a0",
+        "picture_position": "50% 18%",
     },
     {
         "name": "Papama Xuza",
@@ -18,6 +19,7 @@ TEAM_MEMBER_SPECS = (
             "?utm_source=share&utm_campaign=share_via"
             "&utm_content=profile&utm_medium=android_app"
         ),
+        "picture_position": "50% 10%",
     },
     {
         "name": "Anam Thembani",
@@ -27,12 +29,14 @@ TEAM_MEMBER_SPECS = (
             "https://www.linkedin.com/in/anam-thembani-760488351"
             "?trk=contact-info"
         ),
+        "picture_position": "50% 28%",
     },
     {
         "name": "Ndumiso Thungo",
         "student_number": "221411046",
         "role": "Admin & Patient",
         "linkedin_url": "https://www.linkedin.com/in/ndumiso-thungo-254470164/",
+        "picture_position": "50% 14%",
     },
 )
 

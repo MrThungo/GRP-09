@@ -11,7 +11,7 @@ from PIL import Image
 
 from app import create_app
 from app.extensions import db
-from app.landing_team import landing_team_picture_filename
+from app.landing_team import TEAM_MEMBER_SPECS, landing_team_picture_filename
 from app.models import AuditLog, Patient, Sample, TestRequest, User, UserRole
 
 
@@ -228,6 +228,17 @@ class UiSecurityPresentationTest(unittest.TestCase):
             source = stylesheet.read()
         self.assertIn("aspect-ratio: 2.15 / 1;", source)
         self.assertIn("object-fit: cover;", source)
+        self.assertIn(
+            "object-position: var(--landing-team-focus, 50% 22%);",
+            source,
+        )
+        positions = {
+            member["name"]: member["picture_position"]
+            for member in TEAM_MEMBER_SPECS
+        }
+        self.assertEqual(positions["Papama Xuza"], "50% 10%")
+        self.assertEqual(positions["Anam Thembani"], "50% 28%")
+        self.assertEqual(positions["Ndumiso Thungo"], "50% 14%")
 
     def test_release_message_does_not_tell_an_authenticated_user_to_sign_in(self):
         service_path = os.path.join(PROJECT_ROOT, "app", "services.py")

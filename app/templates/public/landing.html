@@ -141,7 +141,10 @@
         <article class="landing-team-card" data-reveal style="--reveal-delay: {{ loop.index0 * 95 }}ms">
           <div class="landing-team-picture">
             {% if member.avatar_url %}
-              <img src="{{ app_url(member.avatar_url) }}" alt="{{ member.name }}" loading="lazy">
+              <img src="{{ app_url(member.avatar_url) }}"
+                   alt="{{ member.name }}"
+                   loading="lazy"
+                   style="--landing-team-focus: {{ member.picture_position }};">
             {% else %}
               <div class="landing-team-picture-fallback" aria-label="{{ member.name }} picture placeholder">
                 <span>{{ member.initials }}</span>

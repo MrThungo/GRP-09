@@ -1309,7 +1309,7 @@ body.confirm-modal-open {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center;
+  object-position: var(--landing-team-focus, 50% 22%);
   transition: transform .75s cubic-bezier(.2, .8, .2, 1), filter .45s ease;
 }
 
