@@ -55,6 +55,11 @@ class AdminUserCreationTest(unittest.TestCase):
         self.assertIn("Create user and assign role", page_html)
         self.assertIn('option value="lab_manager"', page_html)
         self.assertNotIn('option value="super_admin"', page_html)
+        self.assertNotIn("the configured email or WhatsApp service", page_html)
+        self.assertNotIn(
+            "Used in the patient record when the Patient role is selected.",
+            page_html,
+        )
 
         with (
             patch("app.blueprints.admin.send_email", return_value=True),
