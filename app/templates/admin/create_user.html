@@ -2,6 +2,7 @@
 {% block page_title %}Add user{% endblock %}
 
 {% block content %}
+{% set selected_role = form.get('role', '') %}
 <div class="mx-auto max-w-5xl">
   <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
     <div>
@@ -13,27 +14,24 @@
     <a href="{{ url_for('admin.users') }}" class="btn-secondary px-4 py-2 text-sm">Back to users</a>
   </div>
 
-  <form method="post" class="rounded-2xl border border-slate-800 bg-slate-950 p-5 sm:p-7">
+  <form method="post"
+        class="rounded-2xl border border-slate-800 bg-slate-950 p-5 sm:p-7"
+        data-user-role-form>
     <div class="grid gap-5 sm:grid-cols-2">
-      <div>
-        <label for="create_user_title" class="block text-sm text-slate-300">Title</label>
-        <select id="create_user_title" name="title" class="mt-2 w-full px-3 py-2.5 text-sm">
-          <option value="">No title</option>
-          {% for option in title_options %}
-            <option value="{{ option }}" {% if form.get('title') == option %}selected{% endif %}>{{ option }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
-      <div>
+      <div class="sm:col-span-2">
         <label for="create_user_role" class="block text-sm text-slate-300">Role</label>
-        <select id="create_user_role" name="role" required class="mt-2 w-full px-3 py-2.5 text-sm">
+        <select id="create_user_role"
+                name="role"
+                required
+                data-user-role-select
+                class="mt-2 w-full px-3 py-2.5 text-sm">
           <option value="">Select a role</option>
           {% for role in ROLES %}
             <option value="{{ role }}" {% if form.get('role') == role %}selected{% endif %}>{{ ROLE_LABELS[role] }}</option>
           {% endfor %}
         </select>
         <p class="mt-2 text-xs text-slate-500">Super Administrator access cannot be assigned here.</p>
+        <p class="mt-2 text-sm text-cyan-200" data-user-role-guidance aria-live="polite"></p>
       </div>
 
       <div>
@@ -57,14 +55,31 @@
                class="mt-2 w-full px-3 py-2.5 text-sm">
       </div>
 
-      <div>
+      <div data-role-visible-for="admin,lab_manager,doctor,lab_technician"
+           {% if selected_role not in ['admin', 'lab_manager', 'doctor', 'lab_technician'] %}hidden{% endif %}>
+        <label for="create_user_title" class="block text-sm text-slate-300">Title</label>
+        <select id="create_user_title" name="title" class="mt-2 w-full px-3 py-2.5 text-sm">
+          <option value="">No title</option>
+          {% for option in title_options %}
+            <option value="{{ option }}" {% if form.get('title') == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div data-role-visible-for="admin,lab_manager,doctor,lab_technician,patient"
+           {% if not selected_role %}hidden{% endif %}>
         <label for="create_user_phone" class="block text-sm text-slate-300">Phone</label>
-        <input id="create_user_phone" name="phone" type="tel" maxlength="20"
+        <input id="create_user_phone"
+               name="phone"
+               type="tel"
+               maxlength="20"
+               data-required-for="admin,lab_manager,doctor,lab_technician,patient"
                value="{{ form.get('phone', '') }}"
                class="mt-2 w-full px-3 py-2.5 text-sm">
       </div>
 
-      <div>
+      <div data-role-visible-for="admin,lab_manager,doctor,lab_technician,patient"
+           {% if not selected_role %}hidden{% endif %}>
         <label for="create_user_gender" class="block text-sm text-slate-300">Gender</label>
         <select id="create_user_gender" name="gender" class="mt-2 w-full px-3 py-2.5 text-sm">
           <option value="">Not specified</option>
@@ -74,40 +89,59 @@
         </select>
       </div>
 
-      <div>
+      <div data-role-visible-for="admin,lab_manager,doctor,lab_technician"
+           {% if selected_role not in ['admin', 'lab_manager', 'doctor', 'lab_technician'] %}hidden{% endif %}>
         <label for="create_user_employee_number" class="block text-sm text-slate-300">Employee number</label>
-        <input id="create_user_employee_number" name="employee_number" type="text" maxlength="64"
+        <input id="create_user_employee_number"
+               name="employee_number"
+               type="text"
+               maxlength="64"
+               data-required-for="admin,lab_manager,doctor,lab_technician"
                value="{{ form.get('employee_number', '') }}"
                class="mt-2 w-full px-3 py-2.5 text-sm">
       </div>
 
-      <div>
+      <div data-role-visible-for="admin,lab_manager,doctor,lab_technician,patient"
+           {% if not selected_role %}hidden{% endif %}>
         <label for="create_user_sa_id" class="block text-sm text-slate-300">South African ID number</label>
         <input id="create_user_sa_id" name="sa_id_number" type="text" inputmode="numeric"
                maxlength="13" pattern="\d{13}" data-sa-id-source
+               data-required-for="patient"
                value="{{ form.get('sa_id_number', '') }}"
                class="mt-2 w-full px-3 py-2.5 font-mono text-sm">
       </div>
 
-      <div>
+      <div data-role-visible-for="admin,lab_manager,doctor,lab_technician,patient"
+           {% if not selected_role %}hidden{% endif %}>
         <label for="create_user_dob" class="block text-sm text-slate-300">Date of birth</label>
         <input id="create_user_dob" name="date_of_birth" type="date" data-sa-dob-target
                value="{{ form.get('date_of_birth', '') }}"
                class="mt-2 w-full px-3 py-2.5 text-sm">
       </div>
 
-      <div>
+      <div data-role-visible-for="doctor"
+           {% if selected_role != 'doctor' %}hidden{% endif %}>
         <label for="create_user_hpcsa" class="block text-sm text-slate-300">HPCSA number</label>
-        <input id="create_user_hpcsa" name="hpcsa_number" type="text" maxlength="64"
+        <input id="create_user_hpcsa"
+               name="hpcsa_number"
+               type="text"
+               maxlength="64"
+               data-required-for="doctor"
                value="{{ form.get('hpcsa_number', '') }}"
                class="mt-2 w-full px-3 py-2.5 text-sm">
       </div>
 
-      <div>
-        <label for="create_user_address" class="block text-sm text-slate-300">Address</label>
-        <textarea id="create_user_address" name="address" rows="3"
+      <div class="sm:col-span-2"
+           data-role-visible-for="patient"
+           {% if selected_role != 'patient' %}hidden{% endif %}>
+        <label for="create_user_address" class="block text-sm text-slate-300">Home address</label>
+        <textarea id="create_user_address"
+                  name="address"
+                  rows="3"
+                  data-required-for="patient"
                   class="mt-2 w-full px-3 py-2.5 text-sm">{{ form.get('address', '') }}</textarea>
       </div>
+
     </div>
 
     <div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

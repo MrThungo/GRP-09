@@ -1275,6 +1275,55 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
   });
 })();
 
+// --- Admin user creation: role-specific fields and requirements ---
+(function () {
+  const guidance = {
+    admin: "Enter the administrator's employment and contact details.",
+    lab_manager: "Enter the lab manager's employment and contact details.",
+    doctor: "Enter the doctor's employment details and HPCSA registration number.",
+    lab_technician: "Enter the technician's employment and contact details.",
+    patient: "Enter the patient's identity, contact and home-address details.",
+  };
+
+  document.querySelectorAll("[data-user-role-form]").forEach(form => {
+    const roleSelect = form.querySelector("[data-user-role-select]");
+    const guidanceText = form.querySelector("[data-user-role-guidance]");
+    const roleFields = Array.from(form.querySelectorAll("[data-role-visible-for]"));
+    if (!roleSelect) return;
+
+    function supportsRole(element, attribute, role) {
+      return (element.dataset[attribute] || "")
+        .split(",")
+        .map(value => value.trim())
+        .filter(Boolean)
+        .includes(role);
+    }
+
+    function updateRoleFields() {
+      const role = roleSelect.value;
+      roleFields.forEach(field => {
+        const visible = supportsRole(field, "roleVisibleFor", role);
+        field.hidden = !visible;
+        field.querySelectorAll("input, select, textarea").forEach(control => {
+          control.disabled = !visible;
+          if (control.dataset.requiredFor !== undefined) {
+            control.required = (
+              visible
+              && supportsRole(control, "requiredFor", role)
+            );
+          }
+        });
+      });
+      if (guidanceText) {
+        guidanceText.textContent = guidance[role] || "Select a role to show the relevant account fields.";
+      }
+    }
+
+    roleSelect.addEventListener("change", updateRoleFields);
+    updateRoleFields();
+  });
+})();
+
 // --- Manager technician form: filter assignable test types ---
 (function () {
   const search = document.querySelector("[data-technician-test-filter]");

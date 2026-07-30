@@ -30,7 +30,7 @@ ROLE_LABELS = {
     "lab_technician": "Lab Technician",
     "patient": "Patient",
 }
-TITLE_OPTIONS = ("Mr", "Mrs", "Ms", "Miss", "Prof")
+TITLE_OPTIONS = ("Mr", "Mrs", "Ms", "Miss", "Dr", "Prof")
 GENDER_OPTIONS = ("Female", "Male", "Other", "Prefer not to say")
 
 REQUEST_STATUSES = (

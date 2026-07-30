@@ -560,6 +560,24 @@ def create_user():
             errors.append("Email is required.")
         if role not in role_choices:
             errors.append("Select a valid role.")
+        if not phone:
+            errors.append("Phone number is required.")
+        staff_roles = {"admin", "lab_manager", "doctor", "lab_technician"}
+        if role in staff_roles and not employee_number:
+            errors.append("Employee number is required for staff accounts.")
+        if role == "doctor" and not hpcsa_number:
+            errors.append("HPCSA number is required for doctors.")
+        if role == "patient" and not sa_id_number:
+            errors.append("South African ID number is required for patients.")
+        if role == "patient" and not address:
+            errors.append("Home address is required for patients.")
+        if role not in staff_roles:
+            title = None
+            employee_number = None
+        if role != "doctor":
+            hpcsa_number = None
+        if role != "patient":
+            address = None
         if title and title not in TITLE_OPTIONS:
             errors.append("Select a valid title.")
         if gender and gender not in GENDER_OPTIONS:
@@ -631,7 +649,6 @@ def create_user():
                     created_by=current_user.id,
                 )
             )
-
         log_audit(
             current_user.id,
             "create_user",
