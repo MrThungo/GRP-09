@@ -1296,7 +1296,8 @@ body.confirm-modal-open {
 
 .landing-team-picture {
   position: relative;
-  min-height: clamp(13.5rem, 24vw, 17rem);
+  width: 100%;
+  aspect-ratio: 2.15 / 1;
   overflow: hidden;
   background:
     radial-gradient(circle at 32% 24%, rgba(186, 230, 253, .18), transparent 38%),
@@ -1304,9 +1305,9 @@ body.confirm-modal-open {
 }
 
 .landing-team-picture img {
+  display: block;
   width: 100%;
   height: 100%;
-  min-height: inherit;
   object-fit: cover;
   object-position: center;
   transition: transform .75s cubic-bezier(.2, .8, .2, 1), filter .45s ease;
@@ -1319,7 +1320,8 @@ body.confirm-modal-open {
 
 .landing-team-picture-fallback {
   display: grid;
-  min-height: inherit;
+  width: 100%;
+  height: 100%;
   place-items: center;
   background:
     linear-gradient(135deg, transparent 47%, rgba(255,255,255,.04) 47%, rgba(255,255,255,.04) 53%, transparent 53%),
@@ -1391,11 +1393,49 @@ body.confirm-modal-open {
 }
 
 .landing-team-role {
-  max-width: 46%;
   color: #cbd5e1;
   font-size: .82rem;
   line-height: 1.45;
   text-align: right;
+}
+
+.landing-team-details {
+  display: flex;
+  max-width: 52%;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .8rem;
+}
+
+.landing-team-linkedin {
+  display: inline-grid;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(96, 165, 250, .36);
+  border-radius: .75rem;
+  background: rgba(10, 102, 194, .16);
+  color: #93c5fd;
+  transition: transform .3s ease, color .3s ease, border-color .3s ease, background-color .3s ease;
+}
+
+.landing-team-linkedin svg {
+  width: 1.18rem;
+  height: 1.18rem;
+}
+
+.landing-team-linkedin:hover,
+.landing-team-linkedin:focus-visible {
+  border-color: rgba(147, 197, 253, .76);
+  background: #0a66c2;
+  color: #fff;
+  transform: translateY(-.16rem);
+}
+
+.landing-team-linkedin:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: 3px;
 }
 
 .connected-care-card {
@@ -1492,10 +1532,6 @@ html.reveal-motion-ready [data-reveal].is-revealed {
     grid-template-columns: 1fr;
   }
 
-  .landing-team-picture {
-    min-height: clamp(14rem, 82vw, 19rem);
-  }
-
   .landing-team-content {
     min-height: 0;
     align-items: flex-start;
@@ -1504,8 +1540,13 @@ html.reveal-motion-ready [data-reveal].is-revealed {
   }
 
   .landing-team-role {
-    max-width: none;
     text-align: left;
+  }
+
+  .landing-team-details {
+    width: 100%;
+    max-width: none;
+    justify-content: space-between;
   }
 }
 
@@ -1519,6 +1560,7 @@ html.reveal-motion-ready [data-reveal].is-revealed {
 
   .landing-team-card,
   .landing-team-picture img,
+  .landing-team-linkedin,
   .care-journey-card,
   .connected-care-card {
     transition: none;

@@ -7,21 +7,32 @@ TEAM_MEMBER_SPECS = (
         "name": "Mncina Nomhle",
         "student_number": "224497847",
         "role": "Lab Manager",
+        "linkedin_url": "https://linkedin.com/in/nomhle-mncina-b192833a0",
     },
     {
         "name": "Papama Xuza",
         "student_number": "224153498",
         "role": "Doctor",
+        "linkedin_url": (
+            "https://www.linkedin.com/in/papama-xuza-70846b2b3"
+            "?utm_source=share&utm_campaign=share_via"
+            "&utm_content=profile&utm_medium=android_app"
+        ),
     },
     {
         "name": "Anam Thembani",
         "student_number": "219598274",
         "role": "Lab Technician",
+        "linkedin_url": (
+            "https://www.linkedin.com/in/anam-thembani-760488351"
+            "?trk=contact-info"
+        ),
     },
     {
         "name": "Ndumiso Thungo",
         "student_number": "221411046",
         "role": "Admin & Patient",
+        "linkedin_url": "https://www.linkedin.com/in/ndumiso-thungo-254470164/",
     },
 )
 

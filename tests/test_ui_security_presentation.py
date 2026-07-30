@@ -193,9 +193,41 @@ class UiSecurityPresentationTest(unittest.TestCase):
         self.assertIn('id="connected-care"', page)
         self.assertIn("Live sample visibility", page)
         self.assertIn("landing-team-picture", page)
+        self.assertEqual(page.count('class="landing-team-linkedin"'), 4)
+        self.assertIn(
+            "https://www.linkedin.com/in/anam-thembani-760488351?trk=contact-info",
+            page,
+        )
+        self.assertIn(
+            "https://www.linkedin.com/in/papama-xuza-70846b2b3"
+            "?utm_source=share&utm_campaign=share_via"
+            "&utm_content=profile&utm_medium=android_app",
+            page,
+        )
+        self.assertIn(
+            "https://www.linkedin.com/in/ndumiso-thungo-254470164/",
+            page,
+        )
+        self.assertIn(
+            "https://linkedin.com/in/nomhle-mncina-b192833a0",
+            page,
+        )
         self.assertIn("lab-admin@example.com", page)
         self.assertNotIn('href="#security"', page)
         self.assertNotIn('href="#workflow"', page)
+
+    def test_landing_team_pictures_use_one_fluid_aspect_ratio(self):
+        stylesheet_path = os.path.join(
+            PROJECT_ROOT,
+            "app",
+            "static",
+            "css",
+            "app.css",
+        )
+        with open(stylesheet_path, encoding="utf-8") as stylesheet:
+            source = stylesheet.read()
+        self.assertIn("aspect-ratio: 2.15 / 1;", source)
+        self.assertIn("object-fit: cover;", source)
 
     def test_release_message_does_not_tell_an_authenticated_user_to_sign_in(self):
         service_path = os.path.join(PROJECT_ROOT, "app", "services.py")
