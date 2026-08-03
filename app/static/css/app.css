@@ -1349,7 +1349,7 @@ body.confirm-modal-open {
 .landing-team-picture-shade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, transparent 50%, rgba(2, 6, 23, .72));
+  background: linear-gradient(180deg, transparent 76%, rgba(2, 6, 23, .28));
   pointer-events: none;
 }
 
@@ -1372,57 +1372,63 @@ body.confirm-modal-open {
 
 .landing-team-content {
   display: flex;
-  min-height: 6.5rem;
-  align-items: end;
+  position: relative;
+  z-index: 1;
+  min-height: 4.75rem;
+  align-items: center;
   justify-content: space-between;
-  gap: 1.25rem;
-  padding: 1.25rem 1.35rem 1.4rem;
+  gap: .75rem;
+  border-top: 1px solid rgba(148, 163, 184, .12);
+  background: rgba(15, 23, 42, .94);
+  padding: .72rem .9rem .8rem;
 }
 
 .landing-team-name {
   color: #fff;
-  font-size: clamp(1.05rem, 1rem + .28vw, 1.25rem);
+  font-size: clamp(.94rem, .91rem + .2vw, 1.08rem);
   font-weight: 900;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .landing-team-number {
-  margin-top: .2rem;
+  margin-top: .14rem;
   color: #93c5fd;
-  font-size: .82rem;
+  font-size: .7rem;
   font-weight: 800;
 }
 
 .landing-team-role {
   color: #cbd5e1;
-  font-size: .82rem;
-  line-height: 1.45;
+  font-size: .74rem;
+  line-height: 1.3;
   text-align: right;
 }
 
 .landing-team-details {
   display: flex;
-  max-width: 52%;
+  max-width: 50%;
   align-items: center;
   justify-content: flex-end;
-  gap: .8rem;
+  gap: .55rem;
 }
 
 .landing-team-linkedin {
   display: inline-grid;
-  width: 2.35rem;
-  height: 2.35rem;
+  width: 2rem;
+  height: 2rem;
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid rgba(96, 165, 250, .36);
-  border-radius: .75rem;
+  border-radius: .6rem;
   background: rgba(10, 102, 194, .16);
   color: #93c5fd;
   transition: transform .3s ease, color .3s ease, border-color .3s ease, background-color .3s ease;
 }
 
 .landing-team-linkedin svg {
-  width: 1.18rem;
-  height: 1.18rem;
+  width: 1rem;
+  height: 1rem;
 }
 
 .landing-team-linkedin:hover,
@@ -1533,20 +1539,21 @@ html.reveal-motion-ready [data-reveal].is-revealed {
   }
 
   .landing-team-content {
-    min-height: 0;
-    align-items: flex-start;
-    flex-direction: column;
-    gap: .8rem;
+    min-height: 4.45rem;
+    align-items: center;
+    flex-direction: row;
+    gap: .55rem;
+    padding: .62rem .72rem .68rem;
   }
 
   .landing-team-role {
-    text-align: left;
+    text-align: right;
   }
 
   .landing-team-details {
-    width: 100%;
-    max-width: none;
-    justify-content: space-between;
+    width: auto;
+    max-width: 52%;
+    justify-content: flex-end;
   }
 }
 
@@ -2628,6 +2635,155 @@ body.chatbot-fullscreen-open {
 
 body.has-floating-chatbot .app-main .page-container {
   padding-bottom: max(3.6rem, calc(2.9rem + env(safe-area-inset-bottom)));
+}
+
+/* Admin user management: keep actions readable on narrow screens. */
+.admin-user-actions {
+  min-width: 23rem;
+}
+
+.admin-user-role-form select {
+  min-width: 8.75rem;
+}
+
+.admin-user-action-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .admin-users-search-actions {
+    display: grid !important;
+    width: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  }
+
+  .admin-users-search-actions > * {
+    width: 100%;
+    text-align: center;
+  }
+
+  .admin-users-result-count {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .admin-users-table-wrap {
+    overflow-x: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .admin-users-table,
+  .admin-users-table tbody,
+  .admin-users-table tr {
+    display: block;
+    width: 100%;
+  }
+
+  .admin-users-table thead {
+    display: none;
+  }
+
+  .admin-users-table tbody tr {
+    overflow: hidden;
+    margin-bottom: .75rem;
+    border: 1px solid #1e293b;
+    border-radius: .75rem;
+    background: #020617;
+  }
+
+  .admin-users-table tbody tr[hidden] {
+    display: none;
+  }
+
+  .admin-users-table tbody td {
+    display: grid;
+    width: 100%;
+    max-width: none;
+    grid-template-columns: 5.4rem minmax(0, 1fr);
+    align-items: start;
+    gap: .65rem;
+    border-top: 1px solid rgba(30, 41, 59, .72);
+    padding: .58rem .72rem;
+  }
+
+  .admin-users-table tbody td:first-child {
+    border-top: 0;
+  }
+
+  .admin-users-table tbody td::before {
+    content: attr(data-label);
+    color: #64748b;
+    font-size: .65rem;
+    font-weight: 800;
+    letter-spacing: .055em;
+    text-transform: uppercase;
+  }
+
+  .admin-users-table .admin-user-manage-cell {
+    display: block;
+    padding-top: .72rem;
+  }
+
+  body.has-floating-chatbot .admin-users-table .admin-user-manage-cell {
+    padding-right: 4.5rem;
+  }
+
+  .admin-users-table .admin-user-manage-cell::before {
+    display: block;
+    margin-bottom: .55rem;
+  }
+
+  .admin-user-actions {
+    display: grid !important;
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .5rem;
+  }
+
+  .admin-user-role-form,
+  .admin-user-protected-role {
+    grid-column: 1 / -1;
+  }
+
+  .admin-user-role-form {
+    display: grid !important;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .5rem;
+  }
+
+  .admin-user-role-form select {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .admin-user-action-form,
+  .admin-user-action-form button,
+  .admin-user-view-action {
+    width: 100%;
+  }
+
+  .admin-user-action-control {
+    min-height: 2.5rem;
+    white-space: nowrap !important;
+  }
+
+  .admin-users-table td[data-label="Status"] > span {
+    justify-self: start;
+  }
+
+  .admin-users-empty-row td {
+    display: block !important;
+    text-align: center;
+  }
+
+  .admin-users-empty-row td::before {
+    display: none;
+  }
 }
 
 @media (max-width: 640px) {

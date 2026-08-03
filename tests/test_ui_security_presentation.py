@@ -240,6 +240,32 @@ class UiSecurityPresentationTest(unittest.TestCase):
         self.assertEqual(positions["Anam Thembani"], "50% 28%")
         self.assertEqual(positions["Ndumiso Thungo"], "50% 14%")
 
+    def test_team_details_and_admin_user_actions_are_mobile_compact(self):
+        stylesheet_path = os.path.join(
+            PROJECT_ROOT,
+            "app",
+            "static",
+            "css",
+            "app.css",
+        )
+        with open(stylesheet_path, encoding="utf-8") as stylesheet:
+            source = stylesheet.read()
+
+        self.assertIn("min-height: 4.75rem;", source)
+        self.assertNotIn("min-height: 6.5rem;", source)
+        self.assertIn(".admin-users-table tbody td", source)
+        self.assertIn(".admin-user-role-form", source)
+        self.assertIn(".admin-user-action-control", source)
+
+        self.login_as(self.normal_admin_id)
+        response = self.client.get("/admin/users")
+        self.assertEqual(response.status_code, 200)
+        page = response.get_data(as_text=True)
+        self.assertIn('class="admin-users-table ', page)
+        self.assertIn('data-label="Manage"', page)
+        self.assertIn("admin-user-action-control", page)
+        self.assertIn("admin-user-role-form", page)
+
     def test_release_message_does_not_tell_an_authenticated_user_to_sign_in(self):
         service_path = os.path.join(PROJECT_ROOT, "app", "services.py")
         with open(service_path, encoding="utf-8") as service_file:

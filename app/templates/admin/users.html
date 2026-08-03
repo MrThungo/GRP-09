@@ -24,7 +24,7 @@
              placeholder="Search users or actors"
              class="w-full px-3 py-2 pr-10 text-sm">
     </div>
-    <div class="flex gap-2">
+    <div class="admin-users-search-actions flex gap-2">
       <button type="submit" class="btn-primary px-4 py-2 text-sm">Search</button>
       {% if q %}
         <a href="{{ url_for('admin.users', status=status) }}" class="btn-secondary px-4 py-2 text-sm">Clear</a>
@@ -34,7 +34,7 @@
 </div>
 
 <!-- Filters -->
-<div class="mb-4 flex flex-wrap items-center gap-2">
+<div class="admin-users-filters mb-4 flex flex-wrap items-center gap-2">
 
   <a href="{{ url_for('admin.users', status='all', q=q) }}"
      class="px-3 py-2 rounded text-xs transition
@@ -66,15 +66,15 @@
     Blocked
   </a>
 
-  <span class="ml-auto text-xs text-slate-500">
+  <span class="admin-users-result-count ml-auto text-xs text-slate-500">
     {{ users|length }} result{% if users|length != 1 %}s{% endif %}
   </span>
 
 </div>
 
-<div class="bg-slate-950 border border-slate-800 rounded-lg overflow-hidden overflow-x-auto">
+<div class="admin-users-table-wrap bg-slate-950 border border-slate-800 rounded-lg overflow-hidden overflow-x-auto">
 
-  <table class="w-full text-sm" data-page-size="10">
+  <table class="admin-users-table w-full text-sm" data-page-size="10">
 
     <thead class="text-left text-slate-400 text-xs uppercase">
       <tr>
@@ -97,7 +97,7 @@
                  {% if u.is_deactivated %}bg-slate-800/40{% endif %}">
 
         <!-- User -->
-        <td class="px-4 py-3">
+        <td class="px-4 py-3" data-label="User">
 
           <a href="{{ url_for('admin.user_detail', user_id=u.id) }}"
              class="flex items-center gap-3 hover:text-sky-300">
@@ -119,14 +119,14 @@
         </td>
 
         <!-- Email -->
-        <td class="text-slate-300">
+        <td class="text-slate-300" data-label="Email">
 
           {{ u.email }}
 
         </td>
 
         <!-- Role -->
-        <td>
+        <td data-label="Current role">
 
           {% if u.is_pending %}
 
@@ -143,7 +143,7 @@
         </td>
 
         <!-- Status -->
-        <td>
+        <td data-label="Status">
 
           {% if u.is_deactivated %}
 
@@ -168,22 +168,23 @@
         </td>
 
         <!-- Created -->
-        <td class="text-slate-400 text-xs">
+        <td class="text-slate-400 text-xs" data-label="Created">
           {{ u.created_at.strftime('%Y-%m-%d') }}
         </td>
 
         <!-- Actions -->
-        <td class="pr-4">
+        <td class="admin-user-manage-cell pr-4" data-label="Manage">
 
-          <div class="flex flex-wrap gap-2 justify-end">
+          <div class="admin-user-actions flex flex-wrap gap-2 justify-end">
 
             <!-- Role -->
             {% if not u.has_role('super_admin') %}
             <form method="post"
                   action="{{ url_for('admin.set_role', user_id=u.id) }}"
-                  class="flex gap-1 items-center">
+                  class="admin-user-role-form flex gap-1 items-center">
 
               <select name="role"
+                      aria-label="Role for {{ u.full_name or u.email }}"
                       class="px-2 py-1 bg-slate-900 border border-slate-800 rounded text-xs">
 
                 {% for r in ROLES %}
@@ -199,13 +200,13 @@
 
               </select>
 
-              <button class="px-2 py-1 bg-sky-600 hover:bg-sky-500 rounded text-xs">
+              <button class="admin-user-action-control px-2 py-1 bg-sky-600 hover:bg-sky-500 rounded text-xs">
                 Save
               </button>
 
             </form>
             {% else %}
-              <span class="rounded border border-violet-800 bg-violet-950/40 px-2 py-1 text-xs text-violet-200">
+              <span class="admin-user-protected-role rounded border border-violet-800 bg-violet-950/40 px-2 py-1 text-xs text-violet-200">
                 Protected
               </span>
             {% endif %}
@@ -214,9 +215,10 @@
             {% if u.is_deactivated %}
 
             <form method="post"
-                  action="{{ url_for('admin.activate', user_id=u.id) }}">
+                  action="{{ url_for('admin.activate', user_id=u.id) }}"
+                  class="admin-user-action-form">
 
-              <button class="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs">
+              <button class="admin-user-action-control px-2 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs">
                 Activate
               </button>
 
@@ -228,9 +230,10 @@
             {% if u.is_blocked %}
 
             <form method="post"
-                  action="{{ url_for('admin.unblock', user_id=u.id) }}">
+                  action="{{ url_for('admin.unblock', user_id=u.id) }}"
+                  class="admin-user-action-form">
 
-              <button class="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs">
+              <button class="admin-user-action-control px-2 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs">
                 Unblock
               </button>
 
@@ -239,9 +242,10 @@
             {% else %}
 
             <form method="post"
-                  action="{{ url_for('admin.block', user_id=u.id) }}">
+                  action="{{ url_for('admin.block', user_id=u.id) }}"
+                  class="admin-user-action-form">
 
-              <button class="px-2 py-1 bg-rose-700 hover:bg-rose-600 rounded text-xs">
+              <button class="admin-user-action-control px-2 py-1 bg-rose-700 hover:bg-rose-600 rounded text-xs">
                 Block
               </button>
 
@@ -251,7 +255,7 @@
 
             <!-- View -->
             <a href="{{ url_for('admin.user_detail', user_id=u.id) }}"
-               class="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs">
+               class="admin-user-action-control admin-user-view-action px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs">
 
               View
 
@@ -265,7 +269,7 @@
 
       {% else %}
 
-      <tr>
+      <tr class="admin-users-empty-row">
         <td colspan="6" class="px-4 py-10 text-center text-sm text-slate-500">
           No users found for the selected filter.
         </td>
