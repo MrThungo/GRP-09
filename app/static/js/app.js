@@ -432,8 +432,34 @@ document.querySelectorAll("[data-toggle-password]").forEach(button => {
 (function () {
   const bar = document.querySelector("[data-topbar]");
   if (!bar) return;
+  const menuButton = bar.querySelector("[data-landing-menu-toggle]");
+  const mobileMenu = bar.querySelector("[data-landing-mobile-menu]");
+  const closeMenu = () => {
+    if (!menuButton || !mobileMenu) return;
+    menuButton.setAttribute("aria-expanded", "false");
+    menuButton.setAttribute("aria-label", "Open landing page navigation");
+    mobileMenu.hidden = true;
+  };
+  const toggleMenu = () => {
+    if (!menuButton || !mobileMenu) return;
+    const opening = menuButton.getAttribute("aria-expanded") !== "true";
+    menuButton.setAttribute("aria-expanded", String(opening));
+    menuButton.setAttribute("aria-label", opening ? "Close landing page navigation" : "Open landing page navigation");
+    mobileMenu.hidden = !opening;
+  };
   const onScroll = () => bar.classList.toggle("is-scrolled", window.scrollY > 24);
   window.addEventListener("scroll", onScroll, { passive: true });
+  menuButton?.addEventListener("click", toggleMenu);
+  mobileMenu?.querySelectorAll("a").forEach(link => link.addEventListener("click", closeMenu));
+  document.addEventListener("click", event => {
+    if (!bar.contains(event.target)) closeMenu();
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape") closeMenu();
+  });
+  window.addEventListener("resize", () => {
+    if (window.innerWidth >= 768) closeMenu();
+  }, { passive: true });
   onScroll();
 })();
 

@@ -193,6 +193,8 @@ class UiSecurityPresentationTest(unittest.TestCase):
         self.assertIn('id="connected-care"', page)
         self.assertIn("Live sample visibility", page)
         self.assertIn("landing-team-picture", page)
+        self.assertIn('data-landing-menu-toggle', page)
+        self.assertIn('id="landing-mobile-menu"', page)
         self.assertEqual(page.count('class="landing-team-linkedin"'), 4)
         self.assertIn(
             "https://www.linkedin.com/in/anam-thembani-760488351?trk=contact-info",
@@ -227,18 +229,18 @@ class UiSecurityPresentationTest(unittest.TestCase):
         with open(stylesheet_path, encoding="utf-8") as stylesheet:
             source = stylesheet.read()
         self.assertIn("aspect-ratio: 2.15 / 1;", source)
-        self.assertIn("object-fit: cover;", source)
+        self.assertIn("object-fit: var(--landing-team-fit, cover);", source)
         self.assertIn(
             "object-position: var(--landing-team-focus, 50% 22%);",
             source,
         )
-        positions = {
-            member["name"]: member["picture_position"]
-            for member in TEAM_MEMBER_SPECS
-        }
+        members = {member["name"]: member for member in TEAM_MEMBER_SPECS}
+        positions = {name: member["picture_position"] for name, member in members.items()}
         self.assertEqual(positions["Papama Xuza"], "50% 10%")
         self.assertEqual(positions["Anam Thembani"], "50% 28%")
-        self.assertEqual(positions["Ndumiso Thungo"], "50% 14%")
+        self.assertEqual(positions["Ndumiso Thungo"], "50% 50%")
+        self.assertEqual(members["Ndumiso Thungo"]["picture_fit"], "contain")
+        self.assertEqual(members["Ndumiso Thungo"]["picture_scale"], "1.32")
 
     def test_team_details_and_admin_user_actions_are_mobile_compact(self):
         stylesheet_path = os.path.join(
@@ -256,6 +258,8 @@ class UiSecurityPresentationTest(unittest.TestCase):
         self.assertIn(".admin-users-table tbody td", source)
         self.assertIn(".admin-user-role-form", source)
         self.assertIn(".admin-user-action-control", source)
+        self.assertIn(".landing-mobile-menu", source)
+        self.assertIn(".landing-topbar-cta", source)
 
         self.login_as(self.normal_admin_id)
         response = self.client.get("/admin/users")

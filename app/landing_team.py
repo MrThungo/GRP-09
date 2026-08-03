@@ -36,7 +36,10 @@ TEAM_MEMBER_SPECS = (
         "student_number": "221411046",
         "role": "Admin & Patient",
         "linkedin_url": "https://www.linkedin.com/in/ndumiso-thungo-254470164/",
-        "picture_position": "50% 14%",
+        "picture_position": "50% 50%",
+        "picture_fit": "contain",
+        "picture_scale": "1.32",
+        "picture_hover_scale": "1.36",
     },
 )
 
